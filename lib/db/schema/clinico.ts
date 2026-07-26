@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -15,8 +16,9 @@ import {
 } from 'drizzle-orm/pg-core'
 import { profissional } from './acesso'
 import { agendamento } from './agenda'
-import { severidadeAlertaEnum } from './enums'
+import { estadoDenteEnum, severidadeAlertaEnum } from './enums'
 import { paciente } from './pacientes'
+import { dente } from './referencia'
 
 /**
  * Questionário de saúde. VERSIONADA: refazer não sobrescreve, insere versão nova.
@@ -67,6 +69,42 @@ export const alertaClinico = pgTable(
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('alerta_paciente_ativo_idx').on(t.pacienteId).where(sql`${t.ativo}`)],
+)
+
+/**
+ * Estado do dente inteiro, por paciente: ausente, com coroa, com implante.
+ *
+ * Separado das faces de propósito. Face vem de `item_plano` e `execucao` — é
+ * consequência de tratamento. Estado do dente é uma CONSTATAÇÃO do exame
+ * clínico: "o 18 não está aqui" não é um procedimento executado, e forçá-lo a
+ * ser um criaria item de plano fantasma no financeiro.
+ *
+ * Linha ausente = dente presente e íntegro. Só o que desvia do normal é gravado.
+ */
+export const dentePaciente = pgTable(
+  'dente_paciente',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    pacienteId: uuid('paciente_id')
+      .notNull()
+      .references(() => paciente.id, { onDelete: 'cascade' }),
+    denteFdi: smallint('dente_fdi')
+      .notNull()
+      .references(() => dente.fdi, { onDelete: 'restrict' }),
+    estado: estadoDenteEnum('estado').notNull(),
+    observacao: text('observacao'),
+    /** Quem constatou. Estado de dente é achado clínico, tem autor. */
+    profissionalId: uuid('profissional_id').references(() => profissional.id, {
+      onDelete: 'set null',
+    }),
+    registradoEm: timestamp('registrado_em', { withTimezone: true }).notNull().defaultNow(),
+    atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Um estado por dente por paciente — o odontograma sobrescreve, não acumula.
+    uniqueIndex('dente_paciente_uk').on(t.pacienteId, t.denteFdi),
+    index('dente_paciente_idx').on(t.pacienteId),
+  ],
 )
 
 /**

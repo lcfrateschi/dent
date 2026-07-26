@@ -1,4 +1,5 @@
 import { cn } from '@/lib/ui/cn'
+import { Icone } from '@/components/ui/Icone'
 
 export interface Alerta {
   readonly id: string
@@ -35,10 +36,11 @@ export function FaixaAlertas({ alertas }: { alertas: readonly Alerta[] }) {
     >
       <h2
         className={cn(
-          'text-xs font-bold tracking-wide uppercase',
+          'flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase',
           temCritico ? 'text-critico' : 'text-atencao',
         )}
       >
+        <Icone nome="alerta" tamanho={14} />
         {temCritico ? 'Atenção — alertas clínicos' : 'Alertas clínicos'}
       </h2>
       <ul className="mt-1.5 space-y-1">

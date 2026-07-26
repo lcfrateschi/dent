@@ -240,6 +240,18 @@ function DenteSvg({
         </g>
       )}
 
+      {estadoDente === 'raiz_residual' && (
+        // Meia-lua na base: a coroa se foi, a raiz ficou.
+        <path
+          d={`M${x + 6} ${y + lado - 8} Q${centro.x} ${y + lado - 22} ${x + lado - 6} ${y + lado - 8}`}
+          fill="none"
+          stroke="var(--ausente)"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          pointerEvents="none"
+        />
+      )}
+
       {estadoDente === 'implante' && (
         <g stroke="var(--implante)" strokeWidth="2" strokeLinecap="round" pointerEvents="none">
           {/* Glifo de rosca: lê como implante sem precisar de legenda de cor. */}

@@ -14,6 +14,7 @@ import { cn } from '@/lib/ui/cn'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
+import { Icone } from '@/components/ui/Icone'
 
 export interface AgendaClienteProps {
   dados: DadosAgenda
@@ -98,9 +99,11 @@ export function AgendaCliente({
 
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex gap-1">
+            {/* Os dois únicos icon-only do sistema: seta de período é
+                universal e ambos carregam aria-label. */}
             <Link href={navegacao.anterior}>
               <Button tamanho="sm" aria-label="Período anterior">
-                ←
+                <Icone nome="anterior" />
               </Button>
             </Link>
             <Link href={navegacao.hoje}>
@@ -108,7 +111,7 @@ export function AgendaCliente({
             </Link>
             <Link href={navegacao.proximo}>
               <Button tamanho="sm" aria-label="Próximo período">
-                →
+                <Icone nome="proximo" />
               </Button>
             </Link>
           </div>
@@ -179,7 +182,11 @@ export function AgendaCliente({
         {(Object.keys(ESTILO_STATUS) as StatusAgendamento[]).map((s) => (
           <span key={s} className="flex items-center gap-1.5">
             <span className={cn('inline-block size-2.5 rounded-sm', ESTILO_STATUS[s].barra)} />
-            {ESTILO_STATUS[s].rotulo} <span aria-hidden className="opacity-60">{ESTILO_STATUS[s].marca}</span>
+            <Icone nome={s} tamanho={13} />
+            {ESTILO_STATUS[s].rotulo}
+            <span aria-hidden className="opacity-60">
+              {ESTILO_STATUS[s].marca}
+            </span>
           </span>
         ))}
       </div>

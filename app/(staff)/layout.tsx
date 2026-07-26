@@ -5,6 +5,7 @@ import { atorAtual } from '@/lib/authz/sessao'
 import { cn } from '@/lib/ui/cn'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { Icone, type NomeIcone } from '@/components/ui/Icone'
 
 /**
  * Casca do realm de STAFF.
@@ -21,17 +22,18 @@ interface ItemMenu {
   href: string
   rotulo: string
   recurso: Recurso
+  icone: NomeIcone
   /** Fase que constrói a tela. Ausente = já existe. */
   fase?: number
 }
 
 const MENU: readonly ItemMenu[] = [
-  { href: '/pacientes', rotulo: 'Pacientes', recurso: 'paciente' },
-  { href: '/agenda', rotulo: 'Agenda', recurso: 'agenda' },
-  { href: '/financeiro', rotulo: 'Financeiro', recurso: 'cobranca', fase: 8 },
-  { href: '/convenios', rotulo: 'Convênios', recurso: 'convenio', fase: 13 },
-  { href: '/usuarios', rotulo: 'Usuários', recurso: 'usuario', fase: 3 },
-  { href: '/auditoria', rotulo: 'Auditoria', recurso: 'auditoria', fase: 11 },
+  { href: '/pacientes', rotulo: 'Pacientes', recurso: 'paciente', icone: 'pacientes' },
+  { href: '/agenda', rotulo: 'Agenda', recurso: 'agenda', icone: 'agenda' },
+  { href: '/financeiro', rotulo: 'Financeiro', recurso: 'cobranca', icone: 'financeiro', fase: 8 },
+  { href: '/convenios', rotulo: 'Convênios', recurso: 'convenio', icone: 'convenios', fase: 13 },
+  { href: '/usuarios', rotulo: 'Usuários', recurso: 'usuario', icone: 'usuarios', fase: 3 },
+  { href: '/auditoria', rotulo: 'Auditoria', recurso: 'auditoria', icone: 'auditoria', fase: 11 },
 ]
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
@@ -58,8 +60,9 @@ export default async function StaffLayout({ children }: { children: React.ReactN
                   key={i.href}
                   title={`Construído na Fase ${i.fase} — ver ROADMAP.md`}
                   aria-disabled
-                  className="cursor-not-allowed rounded-(--radius-controle) px-2.5 py-1.5 text-sm text-fg-3/60"
+                  className="flex cursor-not-allowed items-center gap-1.5 rounded-(--radius-controle) px-2.5 py-1.5 text-sm text-fg-3/60"
                 >
+                  <Icone nome={i.icone} tamanho={15} />
                   {i.rotulo}
                 </span>
               ) : (
@@ -67,10 +70,13 @@ export default async function StaffLayout({ children }: { children: React.ReactN
                   key={i.href}
                   href={i.href}
                   className={cn(
-                    'rounded-(--radius-controle) px-2.5 py-1.5 text-sm text-fg-2',
+                    'flex items-center gap-1.5 rounded-(--radius-controle) px-2.5 py-1.5 text-sm text-fg-2',
                     'hover:bg-surface-2 hover:text-fg',
                   )}
                 >
+                  {/* Ícone acompanha o rótulo, nunca o substitui: a recepção
+                      tem rotatividade e ícone sozinho exige decorar vocabulário. */}
+                  <Icone nome={i.icone} tamanho={15} />
                   {i.rotulo}
                 </Link>
               ),

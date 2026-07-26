@@ -26,5 +26,3 @@ coverage/
 .vscode/*
 !.vscode/extensions.json
 
-# Previews do design system são gerados: npm run design:previews
-/design/

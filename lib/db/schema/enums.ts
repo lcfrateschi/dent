@@ -42,6 +42,13 @@ export const tipoDenteEnum = pgEnum('tipo_dente', [
 ])
 
 /**
+ * Estado do dente inteiro, constatado no exame clínico. Sobrepõe o das faces.
+ * Não existe 'presente': ausência de linha em `dente_paciente` já significa
+ * dente presente e íntegro.
+ */
+export const estadoDenteEnum = pgEnum('estado_dente', ['ausente', 'coroa', 'implante', 'raiz_residual'])
+
+/**
  * Faces do dente. Quais são válidas depende do tipo e da arcada:
  * anteriores têm `incisal`, posteriores têm `oclusal`;
  * superiores têm `palatina`, inferiores têm `lingual`.

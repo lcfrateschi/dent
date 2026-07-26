@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
+import { Icone } from '@/components/ui/Icone'
 import { FaixaAlertas } from '@/components/paciente/FaixaAlertas'
 import { pode } from '@/lib/authz/politicas'
 import { exigirPermissaoPagina } from '@/lib/authz/sessao'
@@ -150,12 +151,30 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       </div>
 
       <Card>
-        <CardHeader titulo="Prontuário" />
-        <CardBody>
-          <p className="text-sm text-fg-3">
-            Anamnese, odontograma, plano de tratamento e evoluções entram nas Fases 5 a 7.
-            Ver <code className="text-fg-2">ROADMAP.md</code>.
-          </p>
+        <CardHeader
+          titulo="Prontuário"
+          descricao="Evoluções assinadas entram na Fase 7."
+        />
+        <CardBody className="flex flex-wrap gap-2">
+          {pode(ator.perfil, 'anamnese', 'criar') ? (
+            <Link href={`/pacientes/${p.id}/anamnese`}>
+              <Button>
+                <Icone nome="anamnese" />
+                Anamnese
+              </Button>
+            </Link>
+          ) : null}
+          {pode(ator.perfil, 'odontograma', 'ler') ? (
+            <Link href={`/pacientes/${p.id}/odontograma`}>
+              <Button>
+                <Icone nome="odontograma" />
+                Odontograma
+              </Button>
+            </Link>
+          ) : null}
+          {!pode(ator.perfil, 'anamnese', 'criar') && !pode(ator.perfil, 'odontograma', 'ler') ? (
+            <p className="text-sm text-fg-3">Seu perfil não tem acesso a dado clínico.</p>
+          ) : null}
         </CardBody>
       </Card>
 

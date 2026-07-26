@@ -22,6 +22,13 @@
       "when": 1785059142371,
       "tag": "0002_agenda_config",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785063109837,
+      "tag": "0003_dente_paciente",
+      "breakpoints": true
     }
   ]
 }

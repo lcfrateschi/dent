@@ -18,7 +18,10 @@ import type { StatusAgendamento } from '@/lib/domain/agendamento'
 
 export interface EstiloStatus {
   readonly rotulo: string
-  /** Marca curta no canto do cartão — a parte não-cromática da codificação. */
+  /**
+   * Marca Unicode. Mantida **junto** do ícone, não substituída por ele:
+   * sobrevive a impressão, a texto copiado e à falha de carregamento do JS.
+   */
   readonly marca: string
   readonly cartao: string
   readonly barra: string

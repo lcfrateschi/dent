@@ -13,6 +13,7 @@ import type { HorarioFuncionamento } from '@/lib/domain/horario'
 import { cn } from '@/lib/ui/cn'
 import { useMemo } from 'react'
 import { ESTILO_STATUS } from './estilos'
+import { Icone } from '@/components/ui/Icone'
 
 export interface AgendaGradeProps {
   estrutura: EstruturaGrade
@@ -233,9 +234,17 @@ export function AgendaGrade({
                       aria-hidden
                       className={cn('absolute inset-y-0 left-0 w-1', estilo.barra)}
                     />
-                    <span className={cn('block pl-1.5 font-semibold', estilo.texto)}>
-                      {minutosParaHhmm(minutosDoDia(a.inicio, fuso))}{' '}
-                      <span aria-hidden className="font-normal opacity-70">
+                    <span
+                      className={cn(
+                        'flex items-center gap-1 pl-1.5 font-semibold',
+                        estilo.texto,
+                      )}
+                    >
+                      {minutosParaHhmm(minutosDoDia(a.inicio, fuso))}
+                      {/* Ícone + marca Unicode juntos: o status é a informação
+                          mais consultada do cartão e não pode depender de um só canal. */}
+                      <Icone nome={a.status} tamanho={12} className="opacity-80" />
+                      <span aria-hidden className="font-normal opacity-60">
                         {estilo.marca}
                       </span>
                     </span>

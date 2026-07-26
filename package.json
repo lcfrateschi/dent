@@ -18,8 +18,7 @@
     "docker:up": "docker compose up",
     "docker:down": "docker compose down",
     "docker:reset": "docker compose down -v && docker compose up",
-    "docker:logs": "docker compose logs -f app",
-    "design:previews": "tsx scripts/previews/gerar.ts"
+    "docker:logs": "docker compose logs -f app"
   },
   "engines": {
     "node": ">=20.11.0"
@@ -28,6 +27,7 @@
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "lucide-react": "^1.27.0",
     "next": "^15.5.22",
     "next-auth": "^5.0.0-beta.32",
     "pg": "^8.22.0",
