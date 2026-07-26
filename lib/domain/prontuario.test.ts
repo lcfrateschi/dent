@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { ErroDominio } from './erros'
 import {
@@ -59,6 +60,83 @@ describe('rascunho e edição', () => {
     } catch (err) {
       expect((err as ErroDominio).codigo).toBe('EVOLUCAO_OUTRO_AUTOR')
     }
+  })
+})
+
+describe('assinatura — formato fixado', () => {
+  /*
+   * Estes testes existem por causa de um bug real: o separador do `join` era um
+   * byte NUL em vez de espaço, e o arquivo ficou meses no repositório como
+   * "binário" para o grep. Os testes de determinismo e de sensibilidade passavam
+   * os dois — nenhum olhava o FORMATO.
+   *
+   * Lição: função de hash precisa de teste de VETOR, não só de propriedade.
+   */
+  const fixos = {
+    evolucaoId: '0b55032d-1adc-4250-87f6-a4d517131fc6',
+    pacienteId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+    profissionalId: '9e8588b1-7d46-498f-b91a-2879ec01e438',
+    texto: 'Restauração em resina no 16, faces oclusal e mesial.',
+    assinadoEm: new Date('2026-09-10T14:30:00.000Z'),
+  }
+
+  it('produz exatamente este hash — vetor conhecido', () => {
+    // Se este valor mudar, a assinatura de TODO prontuário existente deixa de
+    // conferir. Só mude junto com uma migração de reassinatura.
+    expect(calcularAssinatura(fixos)).toBe(
+      createHash('sha256')
+        .update(
+          [
+            fixos.evolucaoId,
+            fixos.pacienteId,
+            fixos.profissionalId,
+            '2026-09-10T14:30:00.000Z',
+            fixos.texto,
+          ].join(' '),
+        )
+        .digest('hex'),
+    )
+  })
+
+  it('usa ESPAÇO como separador, não outro caractere', () => {
+    // Pega diretamente o bug do NUL: um separador diferente daria outro hash.
+    const comEspaco = createHash('sha256')
+      .update(
+        `${fixos.evolucaoId} ${fixos.pacienteId} ${fixos.profissionalId} 2026-09-10T14:30:00.000Z ${fixos.texto}`,
+      )
+      .digest('hex')
+    expect(calcularAssinatura(fixos)).toBe(comEspaco)
+
+    for (const separador of ['\u0000', '\n', '\t', '|', '']) {
+      const outro = createHash('sha256')
+        .update(
+          [
+            fixos.evolucaoId,
+            fixos.pacienteId,
+            fixos.profissionalId,
+            '2026-09-10T14:30:00.000Z',
+            fixos.texto,
+          ].join(separador),
+        )
+        .digest('hex')
+      expect(calcularAssinatura(fixos), `separador ${JSON.stringify(separador)}`).not.toBe(outro)
+    }
+  })
+
+  it('a ORDEM dos campos é a declarada', () => {
+    // Trocar a ordem também invalidaria prontuários existentes.
+    const trocado = createHash('sha256')
+      .update(
+        [
+          fixos.pacienteId,
+          fixos.evolucaoId,
+          fixos.profissionalId,
+          '2026-09-10T14:30:00.000Z',
+          fixos.texto,
+        ].join(' '),
+      )
+      .digest('hex')
+    expect(calcularAssinatura(fixos)).not.toBe(trocado)
   })
 })
 

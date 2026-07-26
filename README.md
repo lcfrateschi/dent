@@ -84,7 +84,7 @@ npm run dev
 ## Testes
 
 ```bash
-npm test               # 378 testes (Vitest, sem banco)
+npm test               # 381 testes (Vitest, sem banco)
 npm run typecheck
 npm run db:verificar   # 49 invariantes no banco (precisa do compose de pé)
 ```
@@ -117,6 +117,7 @@ lib/
   agenda/          grade, consultas e ações
   anamnese/        formulário versionado e derivação de alertas clínicos
   orcamento/       plano de tratamento e documento congelado
+  prontuario/      evolução assinada, retificação e linha do tempo
   odontograma/     tradução item_plano/execucao ↔ estado das faces
   pacientes/       schema Zod, consultas e server actions
   db/schema/       27 tabelas Drizzle, uma área do domínio por arquivo
@@ -155,6 +156,8 @@ período da agenda, ambas com `aria-label`.
 | Leitura de prontuário auditada | `lib/auditoria/registrar.ts` |
 | Prontuário imutável, agenda sem conflito | triggers e EXCLUDE no banco |
 | Orçamento enviado é imutável | triggers em `drizzle/0004` |
+| Evolução assinada imutável, adulteração visível | trigger + hash SHA-256 conferido na leitura |
+| Exportação de prontuário exige motivo | `lib/prontuario/consultas.ts` |
 | Tokens do código = tokens do catálogo | `lib/ui/tokens.test.ts` |
 
 As três separações de acesso pedidas pela clínica, todas cobertas por teste:
@@ -171,5 +174,6 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 4 — Agenda | pronta |
 | 5 — Anamnese e odontograma ligado ao banco | pronta |
 | 6 — Plano de tratamento e orçamento | pronta |
-| 7 — Prontuário e evoluções assinadas | a fazer |
+| 7 — Prontuário e evoluções assinadas | pronta |
+| 8 — Financeiro | a fazer |
 | 6+ | ver `ROADMAP.md` |

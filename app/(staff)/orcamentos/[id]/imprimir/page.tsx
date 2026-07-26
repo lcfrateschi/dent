@@ -5,7 +5,7 @@ import { ROTULO_STATUS_ORCAMENTO } from '@/lib/domain/orcamento'
 import { dataBr, reais } from '@/lib/ui/moeda'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import './imprimir.css'
+import '@/app/impressao.css'
 
 export const metadata: Metadata = { title: 'Orçamento para impressão', robots: { index: false } }
 
@@ -22,8 +22,9 @@ export const metadata: Metadata = { title: 'Orçamento para impressão', robots:
  * O que a coluna `orcamento.pdf_key` guarda é justamente esse arquivo
  * arquivado, quando a Fase 10 existir. Até então, esta página É o documento.
  *
- * O CSS de impressão está em `imprimir.css`, fora do Tailwind: precisa de
+ * O CSS de impressão está em `app/impressao.css`, fora do Tailwind: precisa de
  * `@page` e de cores fixas, sem depender do tema claro/escuro do usuário.
+ * Compartilhado com a impressão do prontuário (Fase 7).
  */
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const ator = await exigirPermissaoPagina('orcamento', 'ler')

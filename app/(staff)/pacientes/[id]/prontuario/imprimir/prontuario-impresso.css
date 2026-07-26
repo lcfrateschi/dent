@@ -1,0 +1,127 @@
+/*
+ * Complemento de `app/impressao.css` para o prontuário.
+ *
+ * Diferença de propósito em relação ao orçamento: o prontuário pode ter dezenas
+ * de páginas. Então aqui o foco é paginação — nenhum registro clínico deve
+ * quebrar no meio, e o texto precisa continuar legível impresso em preto.
+ */
+
+.prontuario .titulo-doc {
+  font-size: 13pt;
+}
+
+.prontuario .resumo-prontuario,
+.prontuario .historico,
+.prontuario .declaracao {
+  margin-top: 18px;
+}
+
+.prontuario .eventos {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prontuario .evento {
+  padding: 8px 0 8px 10px;
+  border-left: 2px solid #d1d5db;
+  border-bottom: 1px solid #f3f4f6;
+  /*
+   * Registro clínico não quebra entre páginas. Uma evolução partida no meio
+   * levanta dúvida legítima sobre o que foi entregue.
+   */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.prontuario .evento-cabeca {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.prontuario .evento-data {
+  font-size: 9pt;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #111827;
+}
+
+.prontuario .evento-tipo {
+  font-size: 8pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+/* Marcas de situação: caixa alta e borda, para sobreviver à impressão em preto. */
+.prontuario .marca-rascunho,
+.prontuario .marca-retificada,
+.prontuario .marca-invalida {
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.prontuario .marca-rascunho {
+  color: #a16207;
+}
+
+.prontuario .marca-retificada {
+  color: #6b7280;
+}
+
+.prontuario .marca-invalida {
+  color: #b91c1c;
+}
+
+.prontuario .evento-motivo {
+  margin-bottom: 3px;
+  font-size: 9pt;
+  font-style: italic;
+  color: #4b5563;
+}
+
+.prontuario .evento-corpo {
+  font-size: 10.5pt;
+  color: #111827;
+}
+
+/* Texto clínico preserva os parágrafos como o dentista digitou. */
+.prontuario .texto-clinico {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.prontuario .evento-assinatura {
+  margin-top: 4px;
+  font-size: 8.5pt;
+  color: #4b5563;
+}
+
+.prontuario .declaracao {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  break-inside: avoid;
+}
+
+@media print {
+  /* Repete a identificação do paciente no topo de cada folha, quando o
+     navegador suportar — prontuário solto sem nome é documento inútil. */
+  .prontuario .cabecalho {
+    position: running(cabecalhoProntuario);
+  }
+
+  .prontuario .historico {
+    /* Não deixa o título "Histórico" sozinho no fim da página. */
+    break-after: avoid;
+  }
+}

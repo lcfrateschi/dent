@@ -37,7 +37,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <Link href={`/pacientes/${id}/anamnese`} className="text-fg-2 hover:text-fg">
             Anamnese
           </Link>
-          <span className="font-medium text-fg">Odontograma</span>
+          {pode(ator.perfil, 'prontuario', 'ler') ? (
+          <Link href={`/pacientes/${id}/prontuario`} className="text-fg-2 hover:text-fg">
+            Prontuário
+          </Link>
+        ) : null}
+        <span className="font-medium text-fg">Odontograma</span>
         </nav>
       </div>
 

@@ -42,6 +42,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             Odontograma
           </Link>
         ) : null}
+        {pode(ator.perfil, 'prontuario', 'ler') ? (
+          <Link href={`/pacientes/${id}/prontuario`} className="text-fg-2 hover:text-fg">
+            Prontuário
+          </Link>
+        ) : null}
         <span className="font-medium text-fg">Plano e orçamentos</span>
       </nav>
 

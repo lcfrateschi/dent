@@ -152,8 +152,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
       <Card>
         <CardHeader
-          titulo="Prontuário"
-          descricao="Evoluções assinadas entram na Fase 7."
+          titulo="Clínico"
+          descricao="Prontuário, anamnese, odontograma e plano de tratamento."
         />
         <CardBody className="flex flex-wrap gap-2">
           {pode(ator.perfil, 'anamnese', 'criar') ? (
@@ -180,9 +180,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               </Button>
             </Link>
           ) : null}
+          {pode(ator.perfil, 'prontuario', 'ler') ? (
+            <Link href={`/pacientes/${p.id}/prontuario`}>
+              <Button variante="primario">
+                <Icone nome="auditoria" />
+                Prontuário
+              </Button>
+            </Link>
+          ) : null}
           {!pode(ator.perfil, 'anamnese', 'criar') &&
           !pode(ator.perfil, 'odontograma', 'ler') &&
-          !pode(ator.perfil, 'plano_tratamento', 'ler') ? (
+          !pode(ator.perfil, 'plano_tratamento', 'ler') &&
+          !pode(ator.perfil, 'prontuario', 'ler') ? (
             <p className="text-sm text-fg-3">Seu perfil não tem acesso a dado clínico.</p>
           ) : null}
         </CardBody>
