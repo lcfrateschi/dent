@@ -1,0 +1,81 @@
+name: dent
+
+# `docker compose up` sobe tudo pronto: banco migrado, semeado e app servindo.
+# Nenhum passo manual, nenhum .env obrigatório — os defaults abaixo servem para
+# desenvolvimento. Em produção, passe as variáveis pelo ambiente.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dent}
+      POSTGRES_USER: ${POSTGRES_USER:-dent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dent_dev}
+      # Coleção pt-BR: ordenação de nome de paciente com acento sai correta.
+      LANG: pt_BR.UTF-8
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    ports:
+      # Exposto só no loopback. Banco de prontuário não escuta na rede.
+      - '127.0.0.1:${POSTGRES_PORT:-5433}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `migrate` só começa quando o banco realmente aceita conexão.
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-dent} -d ${POSTGRES_DB:-dent}']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # One-shot: aplica migrations (0000 schema + 0001 triggers/EXCLUDE) e semeia.
+  # Idempotente — roda em todo `up` e termina.
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: 'no'
+
+  app:
+    build:
+      context: .
+      target: dev
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
+      NODE_ENV: development
+      WATCHPACK_POLLING: 'true'
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        # App só sobe depois do banco migrado e semeado.
+        condition: service_completed_successfully
+    volumes:
+      - .:/app
+      # Volumes anônimos: node_modules e .next do container não são
+      # sobrescritos pelo bind mount do host (binários podem diferir).
+      - /app/node_modules
+      - /app/.next
+
+  # Variante de produção: `docker compose --profile prod up app-prod`
+  app-prod:
+    profiles: ['prod']
+    build:
+      context: .
+      target: prod
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
+      NODE_ENV: production
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

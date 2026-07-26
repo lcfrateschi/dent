@@ -1,0 +1,25 @@
+node_modules
+.next
+.git
+.gitignore
+npm-debug.log*
+*.log
+coverage
+.vitest
+*.tsbuildinfo
+
+# Nunca entra na imagem: credenciais e dado de paciente
+.env
+.env.local
+.env.*.local
+backups/
+uploads/
+*.dump
+*.sql.gz
+
+.idea
+.vscode
+.DS_Store
+README.md
+ROADMAP.md
+GLOSSARIO.md

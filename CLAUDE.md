@@ -37,12 +37,37 @@ Ver `ROADMAP.md` para as fases e `GLOSSARIO.md` para a linguagem do domínio.
 Next.js e Tailwind **ainda não estão instalados** — entram na Fase 3, conforme a disciplina de
 fatia vertical. A Fase 1 é só domínio e banco.
 
-### Node
+### Node — Docker é o caminho suportado
 
-Alvo: **Node 22** (`.nvmrc`, `engines: >=20.11`). O ambiente onde a Fase 1 foi escrita tinha
-Node 18.19, que está EOL desde abril/2025 — por isso o Vitest está em `^3` e não em `^4`
-(v4 usa `styleText` de `node:util`, ausente no 18). **Ao subir para Node 20+, atualize o
-Vitest para `^4`** e remova esta nota.
+Alvo: **Node 22** (`.nvmrc`, `engines: >=20.11`). Use `docker compose up`.
+
+O ambiente onde as Fases 1–2 foram escritas tinha Node 18.19, EOL desde abril/2025, e ele
+quebra duas coisas que **funcionam normalmente no container**:
+
+| Sintoma no host com Node 18 | Causa | No Docker |
+|---|---|---|
+| `next build` falha com `Cannot find module '@tailwindcss/postcss'` | o `require-hook` do Next não resolve o pacote (que só tem `exports`, sem `main`) no worker | funciona |
+| Vitest `^4` falha: `node:util` não exporta `styleText` | API só existe no Node 20.12+ | por isso o Vitest está travado em `^3` |
+
+O que **funciona no host** mesmo com Node 18: `npm test`, `npm run typecheck`,
+`npm run db:generate`. O que exige Node 20+ ou Docker: `next build` e `next dev`.
+
+**Ao subir o host para Node 20+**, atualize o Vitest para `^4` e remova esta seção.
+
+### TypeScript
+
+Travado em **`^5.9`**. O TypeScript 7 (compilador nativo) quebra o carregador de
+`next.config.ts` do Next 15 — erro `Cannot read properties of undefined (reading 'fileExists')`.
+Reavaliar quando o Next declarar suporte.
+
+### Nunca use `drizzle-kit push`
+
+Ele desconhece as EXCLUDE constraints e os triggers de `drizzle/0001_constraints.sql` e pode
+derrubá-los silenciosamente — junto com o append-only do prontuário. O script foi removido do
+`package.json` de propósito. Use `db:generate` + `db:migrate`.
+
+Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 35 casos que provam
+as invariantes contra um Postgres real.
 
 ### Pendências conhecidas
 

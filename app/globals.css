@@ -1,0 +1,190 @@
+@import 'tailwindcss';
+
+/**
+ * Tokens do design system.
+ *
+ * Duas decisões guiam a paleta:
+ *
+ * 1. ALTO CONTRASTE. A recepcionista lê a agenda a dois metros da tela, muitas
+ *    vezes com reflexo de janela. Bordas e texto secundário são mais escuros do
+ *    que num app comum — de propósito.
+ *
+ * 2. CONVENÇÃO CLÍNICA BRASILEIRA no odontograma: vermelho = a fazer
+ *    (planejado), azul = realizado (executado). É o que o dentista já lê no
+ *    papel há décadas; inverter isso causa erro clínico.
+ *    Como cor sozinha não é acessível, cada estado também tem PADRÃO
+ *    (planejado é hachurado, executado é sólido) — dupla codificação.
+ */
+
+@layer base {
+  :root {
+    color-scheme: light;
+
+    --bg: #f6f8fb;
+    --surface: #ffffff;
+    --surface-2: #eef2f7;
+    --surface-3: #e2e8f0;
+    /* Mais escuro que o slate-200 usual: contraste para leitura à distância. */
+    --border: #b9c4d4;
+    --border-forte: #8f9db2;
+
+    --fg: #0d1523;
+    --fg-2: #3d4a5e;
+    --fg-3: #5b6a80;
+
+    --primary: #0f766e;
+    --primary-hover: #115e59;
+    --primary-fg: #ffffff;
+    --ring: #0d9488;
+
+    --sucesso: #15803d;
+    --atencao: #a16207;
+    --critico: #b91c1c;
+
+    /* ── Odontograma ─────────────────────────────────────────────────────── */
+    --dente-higido: #ffffff;
+    --dente-borda: #7d8ba1;
+    --dente-hover: #d6f0ee;
+    /* Vermelho = planejado (a fazer). */
+    --planejado: #b91c1c;
+    --planejado-fill: #fde8e8;
+    /* Azul = executado (realizado). */
+    --executado: #1d4ed8;
+    --executado-fill: #e0e9fd;
+    --ausente: #64748b;
+    --coroa: #a16207;
+    --implante: #7e22ce;
+    --selecionado: #0d9488;
+    --selecionado-fill: #ccfbf1;
+  }
+
+  .dark {
+    color-scheme: dark;
+
+    --bg: #0a1120;
+    --surface: #101a2c;
+    --surface-2: #18233a;
+    --surface-3: #223049;
+    --border: #35476a;
+    --border-forte: #4c6289;
+
+    --fg: #e9eef7;
+    --fg-2: #b3c0d4;
+    --fg-3: #8f9db4;
+
+    --primary: #2dd4bf;
+    --primary-hover: #5eead4;
+    --primary-fg: #04211d;
+    --ring: #5eead4;
+
+    --sucesso: #4ade80;
+    --atencao: #fbbf24;
+    --critico: #f87171;
+
+    --dente-higido: #1b2740;
+    --dente-borda: #6b7d9c;
+    --dente-hover: #164e4a;
+    --planejado: #fca5a5;
+    --planejado-fill: #4c1d1d;
+    --executado: #93b4fd;
+    --executado-fill: #1e3070;
+    --ausente: #94a3b8;
+    --coroa: #fbbf24;
+    --implante: #c084fc;
+    --selecionado: #2dd4bf;
+    --selecionado-fill: #134e4a;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-forte: var(--border-forte);
+
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-ring: var(--ring);
+
+  --color-sucesso: var(--sucesso);
+  --color-atencao: var(--atencao);
+  --color-critico: var(--critico);
+
+  --color-dente-higido: var(--dente-higido);
+  --color-dente-borda: var(--dente-borda);
+  --color-planejado: var(--planejado);
+  --color-executado: var(--executado);
+  --color-ausente: var(--ausente);
+  --color-coroa: var(--coroa);
+  --color-implante: var(--implante);
+  --color-selecionado: var(--selecionado);
+
+  /* Densidade de clínica: compacta na informação, generosa no alvo de toque. */
+  --spacing-toque: 2.75rem; /* 44px — alvo mínimo de toque */
+
+  --radius-controle: 0.5rem;
+  --radius-cartao: 0.75rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family:
+      ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+      sans-serif;
+    /* Tabular: coluna de valores no financeiro tem que alinhar. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Foco sempre visível: teclado é como a recepção trabalha rápido. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Hachura de "planejado" fora do SVG (legenda, chips). */
+  .hachura-planejado {
+    background-image: repeating-linear-gradient(
+      45deg,
+      var(--planejado) 0 1.5px,
+      var(--planejado-fill) 1.5px 5px
+    );
+  }
+
+  /* Face do odontograma: realce no ponteiro sem depender só de cor. */
+  .odonto-face {
+    transition:
+      stroke 90ms ease,
+      stroke-width 90ms ease;
+  }
+
+  .odonto-face:hover {
+    stroke: var(--selecionado);
+    stroke-width: 1.6;
+  }
+
+  /* Dente focado pelo teclado: contorno no grupo todo. */
+  g[data-fdi]:focus-visible {
+    outline: none;
+  }
+
+  g[data-fdi]:focus-visible > rect:first-of-type {
+    stroke: var(--ring);
+    stroke-width: 2.4;
+  }
+}
