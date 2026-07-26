@@ -55,7 +55,7 @@ const PREFIXOS_PORTAL = ['/meu', '/api/meu']
 /** Telas do portal abertas a quem ainda não tem sessão. */
 const PORTAL_PUBLICAS = ['/meu/entrar', '/meu/convite']
 
-const COOKIE_PORTAL = 'dent_portal'
+const COOKIE_PORTAL = 'facilident_portal'
 
 export default auth((req) => {
   const { pathname } = req.nextUrl

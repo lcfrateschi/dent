@@ -5,7 +5,7 @@ import publicados from '@/design-system/tokens-publicados.json'
 /**
  * Trava contra divergência entre o código e o catálogo do Claude Design.
  *
- * O projeto "dent Design System" tem a própria cópia dos tokens. Trocar uma cor
+ * O projeto de design tem a própria cópia dos tokens. Trocar uma cor
  * em `app/globals.css` e esquecer de republicar deixa a equipe revisando um
  * catálogo que não é mais o produto — que é pior do que não ter catálogo, porque
  * dá confiança errada.

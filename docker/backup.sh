@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Backup do dent: banco + anexos, num único arquivo datado.
+# Backup do Facilident: banco + anexos, num único arquivo datado.
 #
 #   ./docker/backup.sh [destino]        # padrão: ./backups
 #
@@ -26,8 +26,8 @@ set -euo pipefail
 
 DESTINO="${1:-./backups}"
 SERVICO_DB="${SERVICO_DB:-db}"
-USUARIO="${POSTGRES_USER:-dent}"
-BANCO="${POSTGRES_DB:-dent}"
+USUARIO="${POSTGRES_USER:-facilident}"
+BANCO="${POSTGRES_DB:-facilident}"
 RETENCAO_DIAS="${RETENCAO_DIAS:-30}"
 
 carimbo="$(date +%Y%m%d-%H%M%S)"
@@ -36,7 +36,7 @@ trap 'rm -rf "$trabalho"' EXIT
 
 mkdir -p "$DESTINO"
 
-echo "── Backup do dent ──────────────────────────────────────────"
+echo "── Backup do Facilident ──────────────────────────────────────────"
 echo "  banco:   $BANCO"
 echo "  destino: $DESTINO"
 echo
@@ -77,7 +77,7 @@ pacientes="$(docker compose exec -T "$SERVICO_DB" psql -U "$USUARIO" -d "$BANCO"
 evolucoes="$(docker compose exec -T "$SERVICO_DB" psql -U "$USUARIO" -d "$BANCO" -tAc 'select count(*) from evolucao' | tr -d '\r')"
 
 cat > "$trabalho/manifesto.txt" <<FIM
-dent backup
+facilident backup
 gerado_em=$(date -Iseconds)
 postgres=$versao_pg
 migrations_aplicadas=$migrations
@@ -90,7 +90,7 @@ anexos_sha256=$(sha256sum "$trabalho/anexos.tar" | cut -d' ' -f1)
 FIM
 
 # ── 4. Empacota ─────────────────────────────────────────────────────────────
-arquivo="$DESTINO/dent-$carimbo.tar.gz"
+arquivo="$DESTINO/facilident-$carimbo.tar.gz"
 echo "4/4  empacotando em $arquivo…"
 tar -czf "$arquivo" -C "$trabalho" banco.dump anexos.tar manifesto.txt
 
@@ -100,9 +100,9 @@ echo "  $migrations migrations · $pacientes paciente(s) · $evolucoes evoluçã
 
 # ── Retenção ────────────────────────────────────────────────────────────────
 if [ "$RETENCAO_DIAS" -gt 0 ]; then
-  antigos="$(find "$DESTINO" -name 'dent-*.tar.gz' -mtime "+$RETENCAO_DIAS" 2>/dev/null | wc -l)"
+  antigos="$(find "$DESTINO" -name 'facilident-*.tar.gz' -mtime "+$RETENCAO_DIAS" 2>/dev/null | wc -l)"
   if [ "$antigos" -gt 0 ]; then
-    find "$DESTINO" -name 'dent-*.tar.gz' -mtime "+$RETENCAO_DIAS" -delete
+    find "$DESTINO" -name 'facilident-*.tar.gz' -mtime "+$RETENCAO_DIAS" -delete
     echo "  $antigos backup(s) com mais de $RETENCAO_DIAS dias removido(s)"
   fi
 fi

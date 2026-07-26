@@ -130,7 +130,7 @@ export function verificarCodigoTotp(
 export function uriOtpauth({
   segredoBase32,
   email,
-  emissor = 'dent',
+  emissor = 'Facilident',
 }: {
   segredoBase32: string
   email: string

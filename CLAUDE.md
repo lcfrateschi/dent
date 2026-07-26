@@ -1,4 +1,4 @@
-# dent — Sistema para consultório odontológico
+# Facilident — software de gestão odontológica
 
 Ver `ROADMAP.md` para as fases e `GLOSSARIO.md` para a linguagem do domínio.
 **Use os termos do glossário no código.** `evolucao` nunca é `nota`; `itemPlano` nunca é `procedimento`.
@@ -86,6 +86,14 @@ Travado em **`^5.9`**. O TypeScript 7 (compilador nativo) quebra o carregador de
 `next.config.ts` do Next 15 — erro `Cannot read properties of undefined (reading 'fileExists')`.
 Reavaliar quando o Next declarar suporte.
 
+### O nome do projeto no compose é `facilident`
+
+Renomear `name:` no `docker-compose.yml` cria um projeto **novo** para o Docker: containers e
+volumes do nome antigo ficam órfãos, invisíveis para `docker compose ps`, com o banco de
+desenvolvimento dentro. `docker compose -p dent down -v` limpa os do nome anterior. Em produção
+isso seria perda de dados — o caminho é `docker/backup.sh` antes e `restaurar.sh --para-valer`
+depois.
+
 ### A ordem das migrations é o campo `when`, não o número do arquivo
 
 O `drizzle-kit migrate` decide o que aplicar comparando o `when` de
@@ -152,7 +160,13 @@ um relatório verde provando invariante nenhuma.
 - **Comissão sobre valor RECEBIDO** (`clinica.base_comissao = 'valor_recebido'`), decidido pela
   clínica. A comissão entra na base quando o pagamento é conciliado, não quando o procedimento é
   executado. Comissão paga sobre execução vira adiantamento quando o paciente atrasa.
-- **Cor de marca**: verde-petróleo `#0f766e`. A clínica não tem identidade visual a aplicar.
+- **Identidade Facilident**, do manual da marca: paleta `#0D3B66` / `#1278E3` / `#00B3A6` /
+  `#E6F6F6` / `#F2F5F9` / `#6B7280`, tipografia **Poppins**, símbolo do dente com sorriso e
+  pixels. Substitui a decisão anterior (verde-petróleo `#0f766e`), que era explicitamente
+  condicional a "a clínica não tem identidade visual a aplicar" — o fato mudou, a decisão muda
+  com ele. O que **não** mudou: `primary` é o marinho e não o azul, porque azul significa
+  "executado" no odontograma e porque `#1278E3` com branco dá 4,37:1 (abaixo de AA). Ver o
+  comentário no topo de `app/globals.css`.
 - **Mensagem travada em `enviando` NÃO é reenviada automaticamente.** Se o processo morreu
   depois de chamar a Meta, ninguém sabe se ela entregou. A linha fica visível na tela de
   WhatsApp e a decisão é humana. Perder um lembrete custa uma ligação; mandar dois custa a

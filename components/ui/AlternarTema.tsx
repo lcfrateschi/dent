@@ -21,7 +21,7 @@ export function AlternarTema() {
     const proximo: Tema = tema === 'escuro' ? 'claro' : 'escuro'
     document.documentElement.classList.toggle('dark', proximo === 'escuro')
     try {
-      localStorage.setItem('dent-tema', proximo)
+      localStorage.setItem('facilident-tema', proximo)
     } catch {
       // Modo privado sem storage: o tema vale só nesta navegação.
     }

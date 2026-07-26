@@ -3,6 +3,7 @@ import { BotaoSair } from '@/components/ui/BotaoSair'
 import { ROTULO_PERFIL, type Recurso, podeVer } from '@/lib/authz/politicas'
 import { atorAtual } from '@/lib/authz/sessao'
 import { cn } from '@/lib/ui/cn'
+import { Marca } from '@/components/ui/Marca'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Icone, type NomeIcone } from '@/components/ui/Icone'
@@ -63,8 +64,8 @@ export default async function StaffLayout({ children }: { children: React.ReactN
     <div className="min-h-dvh bg-bg">
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5">
-          <Link href="/pacientes" className="text-sm font-semibold text-fg">
-            dent
+          <Link href="/pacientes" aria-label="Facilident — início">
+            <Marca tamanho="sm" id="cabecalho" />
           </Link>
 
           <nav className="flex flex-wrap gap-1">

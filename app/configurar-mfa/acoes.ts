@@ -47,7 +47,7 @@ export async function prepararMfa(): Promise<DadosConfiguracaoMfa> {
   const uri = uriOtpauth({
     segredoBase32: segredo,
     email: ator.email,
-    emissor: cfg?.nome ?? cfg?.razao ?? 'dent',
+    emissor: cfg?.nome ?? cfg?.razao ?? 'Facilident',
   })
 
   // QR gerado no servidor: o segredo não passa por biblioteca de terceiros no

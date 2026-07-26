@@ -1,4 +1,4 @@
-name: dent
+name: facilident
 
 # `docker compose up` sobe tudo pronto: banco migrado, semeado e app servindo.
 # Nenhum passo manual, nenhum .env obrigatório — os defaults abaixo servem para
@@ -9,9 +9,9 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-dent}
-      POSTGRES_USER: ${POSTGRES_USER:-dent}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dent_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-facilident}
+      POSTGRES_USER: ${POSTGRES_USER:-facilident}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-facilident_dev}
       # Coleção pt-BR: ordenação de nome de paciente com acento sai correta.
       LANG: pt_BR.UTF-8
       POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
@@ -22,7 +22,7 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       # `migrate` só começa quando o banco realmente aceita conexão.
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-dent} -d ${POSTGRES_DB:-dent}']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-facilident} -d ${POSTGRES_DB:-facilident}']
       interval: 3s
       timeout: 5s
       retries: 20
@@ -35,7 +35,7 @@ services:
       context: .
       target: migrate
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
+      DATABASE_URL: postgres://${POSTGRES_USER:-facilident}:${POSTGRES_PASSWORD:-facilident_dev}@db:5432/${POSTGRES_DB:-facilident}
     depends_on:
       db:
         condition: service_healthy
@@ -46,7 +46,7 @@ services:
       context: .
       target: dev
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
+      DATABASE_URL: postgres://${POSTGRES_USER:-facilident}:${POSTGRES_PASSWORD:-facilident_dev}@db:5432/${POSTGRES_DB:-facilident}
       NODE_ENV: development
       WATCHPACK_POLLING: 'true'
       AUTH_SECRET: ${AUTH_SECRET:-dev-secret-trocar-em-producao-0123456789abcdef}
@@ -92,7 +92,7 @@ services:
       context: .
       target: prod
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
+      DATABASE_URL: postgres://${POSTGRES_USER:-facilident}:${POSTGRES_PASSWORD:-facilident_dev}@db:5432/${POSTGRES_DB:-facilident}
       NODE_ENV: production
       # Sem `:?` de propósito: o compose interpola TODOS os serviços mesmo os
       # de outro profile, e um `:?` aqui quebraria `docker compose up` normal.
@@ -141,7 +141,7 @@ services:
         sleep ${DESPACHO_INTERVALO_SEGUNDOS:-600};
       done'
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
+      DATABASE_URL: postgres://${POSTGRES_USER:-facilident}:${POSTGRES_PASSWORD:-facilident_dev}@db:5432/${POSTGRES_DB:-facilident}
       NODE_ENV: production
       WHATSAPP_PROVEDOR: ${WHATSAPP_PROVEDOR:-simulado}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}

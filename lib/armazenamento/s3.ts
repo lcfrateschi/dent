@@ -23,7 +23,7 @@ import { ErroArmazenamento, type ArquivoGuardado, type ProvedorArmazenamento } f
  */
 
 export interface ConfigS3 {
-  /** Host do bucket, sem esquema. Ex.: `dent.abc123.r2.cloudflarestorage.com`. */
+  /** Host do bucket, sem esquema. Ex.: `facilident.abc123.r2.cloudflarestorage.com`. */
   readonly host: string
   readonly accessKeyId: string
   readonly secretAccessKey: string

@@ -118,9 +118,9 @@ describe('segredo gerado', () => {
 describe('URI otpauth', () => {
   it('monta a URI que o app de autenticação lê no QR', () => {
     const uri = uriOtpauth({ segredoBase32: 'ABCDEFGH', email: 'ana@clinica.com.br' })
-    expect(uri).toContain('otpauth://totp/dent%3Aana%40clinica.com.br')
+    expect(uri).toContain('otpauth://totp/Facilident%3Aana%40clinica.com.br')
     expect(uri).toContain('secret=ABCDEFGH')
-    expect(uri).toContain('issuer=dent')
+    expect(uri).toContain('issuer=Facilident')
     expect(uri).toContain('algorithm=SHA1')
     expect(uri).toContain('digits=6')
     expect(uri).toContain('period=30')

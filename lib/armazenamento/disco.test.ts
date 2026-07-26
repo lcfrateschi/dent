@@ -10,7 +10,7 @@ let raiz: string
 let store: ArmazenamentoEmDisco
 
 beforeEach(async () => {
-  raiz = await mkdtemp(join(tmpdir(), 'dent-anexos-'))
+  raiz = await mkdtemp(join(tmpdir(), 'facilident-anexos-'))
   store = new ArmazenamentoEmDisco(raiz)
 })
 

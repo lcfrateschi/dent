@@ -1,8 +1,8 @@
 {
-  "name": "dent",
+  "name": "facilident",
   "version": "0.1.0",
   "private": true,
-  "description": "Sistema de gestão para consultório odontológico",
+  "description": "Facilident — software de gestão odontológica",
   "scripts": {
     "dev": "next dev",
     "build": "NODE_ENV=production next build",
@@ -24,7 +24,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "db:verificar": "docker compose exec -T db psql -U ${POSTGRES_USER:-dent} -d ${POSTGRES_DB:-dent} -q -f - < docker/verificar-invariantes.sql",
+    "db:verificar": "docker compose exec -T db psql -U ${POSTGRES_USER:-facilident} -d ${POSTGRES_DB:-facilident} -q -f - < docker/verificar-invariantes.sql",
     "docker:up": "docker compose up",
     "docker:down": "docker compose down",
     "docker:reset": "docker compose down -v && docker compose up",

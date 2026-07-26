@@ -1,15 +1,33 @@
 @import 'tailwindcss';
 
 /**
- * Tokens do design system.
+ * Tokens do design system — identidade Facilident.
  *
- * Duas decisões guiam a paleta:
+ * Paleta do manual da marca: `#0D3B66` (azul-marinho), `#1278E3` (azul),
+ * `#00B3A6` (verde-água), `#E6F6F6` e `#F2F5F9` (claros), `#6B7280` (cinza).
+ *
+ * Três decisões guiam o uso dela, e a segunda é a que menos se espera:
  *
  * 1. ALTO CONTRASTE. A recepcionista lê a agenda a dois metros da tela, muitas
  *    vezes com reflexo de janela. Bordas e texto secundário são mais escuros do
  *    que num app comum — de propósito.
  *
- * 2. CONVENÇÃO CLÍNICA BRASILEIRA no odontograma: vermelho = a fazer
+ * 2. **O botão primário é o AZUL-MARINHO, não o azul da marca.** Duas razões, e
+ *    as duas são de segurança:
+ *
+ *    - No odontograma, **azul significa "executado"** (convenção clínica
+ *      brasileira, ver item 3). Pintar o botão de ação com o azul da marca
+ *      colocaria dois azuis vizinhos na mesma tela, um deles com significado
+ *      clínico. Ambiguidade de cor em prontuário custa erro, não estética.
+ *    - Contraste: `#1278E3` com texto branco dá 4,37:1 — abaixo do mínimo AA de
+ *      4,5 para texto normal. `#0D3B66` dá 11,8:1. O azul da marca fica onde a
+ *      exigência é 3:1 (anel de foco, ícones, preenchimentos), e o verde-água
+ *      `#00B3A6` (2,6:1 com branco) nunca recebe texto branco em cima.
+ *
+ *    A marca não perde: o símbolo e a palavra usam o gradiente completo, e é ali
+ *    que a identidade é lida.
+ *
+ * 3. CONVENÇÃO CLÍNICA BRASILEIRA no odontograma: vermelho = a fazer
  *    (planejado), azul = realizado (executado). É o que o dentista já lê no
  *    papel há décadas; inverter isso causa erro clínico.
  *    Como cor sozinha não é acessível, cada estado também tem PADRÃO
@@ -20,22 +38,33 @@
   :root {
     color-scheme: light;
 
-    --bg: #f6f8fb;
+    /* #F2F5F9 é o cinza-claro do manual. */
+    --bg: #f2f5f9;
     --surface: #ffffff;
-    --surface-2: #eef2f7;
-    --surface-3: #e2e8f0;
+    --surface-2: #e8eef6;
+    --surface-3: #dbe4ef;
+    /* Tinta suave da marca (#E6F6F6), para destaque sem cor semântica. */
+    --surface-marca: #e6f6f6;
     /* Mais escuro que o slate-200 usual: contraste para leitura à distância. */
-    --border: #b9c4d4;
-    --border-forte: #8f9db2;
+    --border: #b6c3d5;
+    --border-forte: #8b9bb3;
 
     --fg: #0d1523;
     --fg-2: #3d4a5e;
-    --fg-3: #5b6a80;
+    /* Cinza do manual: 4,8:1 sobre branco, acima do mínimo AA. */
+    --fg-3: #6b7280;
 
-    --primary: #0f766e;
-    --primary-hover: #115e59;
+    /* Cores da marca, para símbolo, palavra e destaques — não para texto miúdo. */
+    --marca: #0d3b66;
+    --marca-azul: #1278e3;
+    --marca-teal: #00b3a6;
+
+    /* Ver o item 2 do comentário: primário é o marinho, por contraste e por
+       não disputar significado com o azul do odontograma. */
+    --primary: #0d3b66;
+    --primary-hover: #0a2e52;
     --primary-fg: #ffffff;
-    --ring: #0d9488;
+    --ring: #1278e3;
 
     --sucesso: #15803d;
     --atencao: #a16207;
@@ -44,7 +73,7 @@
     /* ── Odontograma ─────────────────────────────────────────────────────── */
     --dente-higido: #ffffff;
     --dente-borda: #7d8ba1;
-    --dente-hover: #d6f0ee;
+    --dente-hover: #e6f6f6;
     /* Vermelho = planejado (a fazer). */
     --planejado: #b91c1c;
     --planejado-fill: #fde8e8;
@@ -54,28 +83,36 @@
     --ausente: #64748b;
     --coroa: #a16207;
     --implante: #7e22ce;
-    --selecionado: #0d9488;
-    --selecionado-fill: #ccfbf1;
+    --selecionado: #00b3a6;
+    --selecionado-fill: #d5f2ef;
   }
 
   .dark {
     color-scheme: dark;
 
-    --bg: #0a1120;
-    --surface: #101a2c;
-    --surface-2: #18233a;
-    --surface-3: #223049;
-    --border: #35476a;
-    --border-forte: #4c6289;
+    /* Escuro na família do marinho da marca, não num cinza-azulado qualquer. */
+    --bg: #071626;
+    --surface: #0d2439;
+    --surface-2: #14314c;
+    --surface-3: #1c3f61;
+    --surface-marca: #103b48;
+    --border: #2c527a;
+    --border-forte: #3f6b9b;
 
     --fg: #e9eef7;
     --fg-2: #b3c0d4;
-    --fg-3: #8f9db4;
+    --fg-3: #93a2b8;
 
-    --primary: #2dd4bf;
-    --primary-hover: #5eead4;
-    --primary-fg: #04211d;
-    --ring: #5eead4;
+    --marca: #e9eef7;
+    --marca-azul: #6fb2f2;
+    --marca-teal: #2fd3c6;
+
+    /* No escuro o marinho desapareceria: o primário é o azul da marca clareado,
+       com texto escuro em cima (8,4:1). */
+    --primary: #7cc0fa;
+    --primary-hover: #a5d4fc;
+    --primary-fg: #062440;
+    --ring: #7cc0fa;
 
     --sucesso: #4ade80;
     --atencao: #fbbf24;
@@ -83,7 +120,7 @@
 
     --dente-higido: #1b2740;
     --dente-borda: #6b7d9c;
-    --dente-hover: #164e4a;
+    --dente-hover: #103b48;
     --planejado: #fca5a5;
     --planejado-fill: #4c1d1d;
     --executado: #93b4fd;
@@ -91,22 +128,31 @@
     --ausente: #94a3b8;
     --coroa: #fbbf24;
     --implante: #c084fc;
-    --selecionado: #2dd4bf;
-    --selecionado-fill: #134e4a;
+    --selecionado: #2fd3c6;
+    --selecionado-fill: #10403c;
   }
 }
 
 @theme inline {
+  /* Poppins vem de `next/font/google` em app/layout.tsx; o fallback existe para
+     o instante entre o CSS e a fonte, e para quando o build roda sem rede. */
+  --font-sans: var(--fonte-marca), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
+  --color-surface-marca: var(--surface-marca);
   --color-border: var(--border);
   --color-border-forte: var(--border-forte);
 
   --color-fg: var(--fg);
   --color-fg-2: var(--fg-2);
   --color-fg-3: var(--fg-3);
+
+  --color-marca: var(--marca);
+  --color-marca-azul: var(--marca-azul);
+  --color-marca-teal: var(--marca-teal);
 
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);

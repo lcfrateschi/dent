@@ -7,7 +7,7 @@ export default defineConfig({
   out: './drizzle',
   dbCredentials: {
     // Só necessário para migrate/push/studio. `generate` funciona sem conexão.
-    url: process.env.DATABASE_URL ?? 'postgres://localhost:5432/dent',
+    url: process.env.DATABASE_URL ?? 'postgres://localhost:5432/facilident',
   },
   verbose: true,
   strict: true,

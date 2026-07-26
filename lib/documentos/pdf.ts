@@ -247,7 +247,7 @@ function montarArquivo(paginas: readonly Pagina[], opcoes: OpcoesPdf): Uint8Arra
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
   )
   objetos.push(
-    `<< /Title (${textoPdf(opcoes.titulo)}) /Producer (dent) /Creator (dent)` +
+    `<< /Title (${textoPdf(opcoes.titulo)}) /Producer (Facilident) /Creator (Facilident)` +
       `${opcoes.autor ? ` /Author (${textoPdf(opcoes.autor)})` : ''}` +
       ` /CreationDate (${carimboPdf(opcoes.criadoEm ?? new Date())}) >>`,
   )

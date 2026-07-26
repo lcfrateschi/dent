@@ -60,7 +60,7 @@ function criar(env: NodeJS.ProcessEnv): ProvedorArmazenamento {
           'prontuário iriam para dentro do container e desapareceriam no deploy.',
       )
     }
-    return new ArmazenamentoEmDisco('/tmp/dent-anexos')
+    return new ArmazenamentoEmDisco('/tmp/facilident-anexos')
   }
   return new ArmazenamentoEmDisco(raiz)
 }

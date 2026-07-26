@@ -10,7 +10,7 @@ import { cookies, headers } from 'next/headers'
  *
  * ── O que separa este realm do staff ────────────────────────────────────────
  *
- * 1. **Cookie com outro nome.** `dent_portal` não é `authjs.session-token`. Não há
+ * 1. **Cookie com outro nome.** `facilident_portal` não é `authjs.session-token`. Não há
  *    como um cookie de staff ser lido como sessão de paciente ou vice-versa,
  *    porque nem o nome nem o formato coincidem.
  * 2. **Outro mecanismo.** O staff usa Auth.js com JWT; o portal usa token opaco no
@@ -28,7 +28,7 @@ import { cookies, headers } from 'next/headers'
  */
 
 /** Nome do cookie. Diferente do staff de propósito — ver o comentário do módulo. */
-export const COOKIE_PORTAL = 'dent_portal'
+export const COOKIE_PORTAL = 'facilident_portal'
 
 /**
  * Duração da sessão.

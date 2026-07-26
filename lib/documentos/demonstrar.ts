@@ -384,7 +384,7 @@ async function contarArquivos(
 ): Promise<number> {
   if (store.nome !== 'disco') return 0
 
-  const raiz = process.env.ARMAZENAMENTO_RAIZ ?? '/tmp/dent-anexos'
+  const raiz = process.env.ARMAZENAMENTO_RAIZ ?? '/tmp/facilident-anexos'
   const { readdir } = await import('node:fs/promises')
   const { join } = await import('node:path')
 

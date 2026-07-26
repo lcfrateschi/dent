@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Restauração do dent — e o teste dela.
+# Restauração do Facilident — e o teste dela.
 #
-#   ./docker/restaurar.sh --testar backups/dent-AAAAMMDD-HHMMSS.tar.gz
-#   ./docker/restaurar.sh --para-valer backups/dent-AAAAMMDD-HHMMSS.tar.gz
+#   ./docker/restaurar.sh --testar backups/facilident-AAAAMMDD-HHMMSS.tar.gz
+#   ./docker/restaurar.sh --para-valer backups/facilident-AAAAMMDD-HHMMSS.tar.gz
 #
 # ── Por que `--testar` é o modo padrão de uso ──────────────────────────────
 # Porque a única coisa que prova um backup é restaurá-lo. `--testar` cria um
-# banco temporário ao lado (`dent_teste_restauracao`), restaura ali, confere as
+# banco temporário ao lado (`facilident_teste_restauracao`), restaura ali, confere as
 # contagens contra o manifesto e roda as invariantes. **Não toca no banco de
 # produção.** É o comando para rodar toda semana.
 #
@@ -41,14 +41,14 @@ if [ ! -f "$ARQUIVO" ]; then
 fi
 
 SERVICO_DB="${SERVICO_DB:-db}"
-USUARIO="${POSTGRES_USER:-dent}"
-BANCO="${POSTGRES_DB:-dent}"
-BANCO_TESTE="dent_teste_restauracao"
+USUARIO="${POSTGRES_USER:-facilident}"
+BANCO="${POSTGRES_DB:-facilident}"
+BANCO_TESTE="facilident_teste_restauracao"
 
 trabalho="$(mktemp -d)"
 trap 'rm -rf "$trabalho"' EXIT
 
-echo "── Restauração do dent ─────────────────────────────────────"
+echo "── Restauração do Facilident ─────────────────────────────────────"
 tar -xzf "$ARQUIVO" -C "$trabalho"
 
 if [ ! -f "$trabalho/manifesto.txt" ]; then

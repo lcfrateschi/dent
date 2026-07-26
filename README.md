@@ -1,6 +1,8 @@
-# dent
+# Facilident
 
-Sistema de gestão para consultório odontológico.
+**Software de gestão odontológica.** Facilident simplifica a gestão odontológica
+para clínicas e consultórios crescerem com mais eficiência, organização e cuidado
+ao paciente — gestão odontológica *simples, inteligente e humana*.
 
 - **`ROADMAP.md`** — as fases e a ordem
 - **`GLOSSARIO.md`** — a linguagem do domínio
@@ -22,11 +24,17 @@ Isso é tudo. O compose, em ordem:
 Nenhum `.env` é necessário para desenvolvimento — os defaults estão no
 `docker-compose.yml`.
 
+> **Vindo de uma cópia anterior a "Facilident"?** O projeto do compose mudou de
+> nome (`dent` → `facilident`), e com ele os volumes: os antigos ficam órfãos, com
+> o banco de desenvolvimento dentro. Limpe com `docker compose -p dent down -v`
+> antes de subir. Se aquele banco tinha algo que importa, faça `./docker/backup.sh`
+> **antes** de renomear e restaure depois com `--para-valer`.
+
 | Serviço | Endereço |
 |---|---|
 | App | http://localhost:3000 |
 | Odontograma | http://localhost:3000/design/odontograma |
-| Postgres | `127.0.0.1:5433` (usuário `dent`, senha `dent_dev`) |
+| Postgres | `127.0.0.1:5433` (usuário `facilident`, senha `facilident_dev`) |
 
 O Postgres é publicado **só no loopback** — banco de prontuário não escuta na rede.
 
@@ -488,11 +496,21 @@ docker/
 
 ## Design system
 
-O catálogo vive no **Claude Design** (projeto "dent Design System"): 23 cards, 20
-componentes e um UI kit clicável da equipe. `design-system/tokens-publicados.json`
-é o snapshot do que está publicado, e `lib/ui/tokens.test.ts` falha se
-`app/globals.css` divergir — republique com `/design-sync` e atualize o snapshot
-no mesmo commit.
+O catálogo vive no **Claude Design**: 23 cards, 20 componentes e um UI kit
+clicável da equipe. `design-system/tokens-publicados.json` é o snapshot do que
+está publicado, e `lib/ui/tokens.test.ts` falha se `app/globals.css` divergir —
+republique com `/design-sync` e atualize o snapshot no mesmo commit. Foi o que
+pegou a troca de paleta do rebranding: o teste reprovou antes de o catálogo
+começar a mentir.
+
+**Identidade Facilident.** O manual está em `design-system/manual-da-marca.png`
+— é a fonte da paleta, da tipografia e do posicionamento. O símbolo
+é vetor (`components/ui/Marca.tsx`), não raster, porque aparece de 20 px a 64 px
+em tema claro e escuro. Já republicados no catálogo: `tokens/cores.css`,
+`guidelines/cores-marca.html`, `guidelines/cores-superficies.html`,
+`guidelines/marca-logo.html` e `assets/logo.svg`. **Ainda com o nome antigo lá:**
+o UI kit (`ui_kits/dent-staff/`), `readme.md` e `SKILL.md` — são telas de exemplo
+e texto, não afirmam cor errada.
 
 Ícones: **Lucide**, via mapa fechado em `components/ui/Icone.tsx`. A regra é
 ícone **acompanha** texto, nunca substitui — as únicas exceções são as setas de

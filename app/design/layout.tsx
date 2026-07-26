@@ -1,5 +1,6 @@
 import { AlternarTema } from '@/components/ui/AlternarTema'
 import Link from 'next/link'
+import { Marca } from '@/components/ui/Marca'
 
 /**
  * Layout do playground do design system. Serve dois propósitos: revisar
@@ -10,8 +11,8 @@ export default function DesignLayout({ children }: { children: React.ReactNode }
     <div className="min-h-dvh bg-bg">
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <Link href="/" className="text-sm font-semibold text-fg">
-            dent
+          <Link href="/" aria-label="Facilident — início">
+            <Marca tamanho="sm" id="design" />
           </Link>
           <span className="text-xs text-fg-3">Design system</span>
           <nav className="flex gap-4 text-sm">

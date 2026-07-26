@@ -5,6 +5,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BotaoSairPortal } from './BotaoSairPortal'
 import { sessaoAtual } from '@/lib/portal/sessao'
+import { SimboloFacilident } from '@/components/ui/Marca'
 
 export const metadata: Metadata = {
   title: { default: 'Meu atendimento', template: '%s · Meu atendimento' },
@@ -44,7 +45,16 @@ export default async function PortalLayout({ children }: { children: React.React
     <div className="min-h-dvh bg-bg">
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <Link href={sessao ? '/meu' : '/meu/entrar'} className="font-semibold text-fg">
+          {/*
+            No portal a marca acompanha, mas não manda: o rótulo que orienta o
+            paciente é "Meu atendimento". Quem entra ali quer ver a própria
+            consulta, não o nome do software.
+          */}
+          <Link
+            href={sessao ? '/meu' : '/meu/entrar'}
+            className="flex items-center gap-2 font-semibold text-fg"
+          >
+            <SimboloFacilident tamanho={24} id="portal" />
             Meu atendimento
           </Link>
 
