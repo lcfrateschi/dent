@@ -12,8 +12,24 @@
 const SEGREDO_DEV = 'dev-secret-trocar-em-producao-0123456789abcdef'
 const MIN_CARACTERES = 32
 
+/**
+ * Segredo do webhook do WhatsApp, com default de desenvolvimento no compose pelo
+ * mesmo motivo. O risco aqui é diferente e não menor: com ele, qualquer pessoa
+ * assina um POST dizendo "o paciente cancelou" e **cancela consulta alheia**.
+ */
+const SEGREDO_WHATSAPP_DEV = 'dev-whatsapp-app-secret-trocar-em-producao'
+
 export function exigirSegredoDeProducao(): void {
   if (process.env.NODE_ENV !== 'production') return
+
+  const whatsapp = process.env.WHATSAPP_APP_SECRET
+  if (whatsapp === SEGREDO_WHATSAPP_DEV) {
+    throw new Error(
+      'WHATSAPP_APP_SECRET está com o valor de desenvolvimento. ' +
+        'Use o App Secret da sua aplicação na Meta — com o valor público, ' +
+        'qualquer pessoa consegue cancelar consultas pelo webhook.',
+    )
+  }
 
   const segredo = process.env.AUTH_SECRET
 

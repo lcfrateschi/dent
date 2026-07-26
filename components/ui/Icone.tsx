@@ -11,6 +11,9 @@ import {
   ClipboardList,
   Clock,
   CreditCard,
+  MailQuestion,
+  MessageCircle,
+  Send,
   type LucideIcon,
   Minus,
   Pencil,
@@ -58,6 +61,7 @@ export const ICONES = {
   auditoria: ScrollText,
   odontograma: Stethoscope,
   anamnese: ClipboardList,
+  whatsapp: MessageCircle,
 
   // Ações
   novo: Plus,
@@ -66,6 +70,9 @@ export const ICONES = {
   anterior: ChevronLeft,
   proximo: ChevronRight,
   cobranca: CreditCard,
+  enviar: Send,
+  /** Resposta que a máquina não entendeu e espera um humano. */
+  pendente_humano: MailQuestion,
 
   // Status de agendamento — pareados com as marcas Unicode de estilos.ts
   agendado: Circle,

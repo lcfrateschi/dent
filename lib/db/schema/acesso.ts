@@ -70,7 +70,14 @@ export const usuario = pgTable(
     email: text('email').notNull(),
     senhaHash: text('senha_hash').notNull(),
     perfil: perfilUsuarioEnum('perfil').notNull(),
-    /** MFA é obrigatório para staff (dado de saúde). Segredo TOTP cifrado na aplicação. */
+    /**
+     * MFA é obrigatório para staff (dado de saúde).
+     *
+     * ⚠️ O segredo TOTP está em texto claro. Quem lê esta coluna gera códigos
+     * válidos — mas para usá-los ainda precisa da senha, então não é bypass de
+     * autenticação; é agravamento de um vazamento de banco. Cifrar exige uma
+     * chave fora do banco e rotação, e está no ROADMAP como dívida.
+     */
     mfaSecret: text('mfa_secret'),
     mfaAtivo: boolean('mfa_ativo').notNull().default(false),
     ativo: boolean('ativo').notNull().default(true),

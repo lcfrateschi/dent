@@ -1,11 +1,18 @@
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Icone } from '@/components/ui/Icone'
+import { ConsentimentoWhatsapp } from '@/components/paciente/ConsentimentoWhatsapp'
 import { FaixaAlertas } from '@/components/paciente/FaixaAlertas'
 import { pode } from '@/lib/authz/politicas'
 import { exigirPermissaoPagina } from '@/lib/authz/sessao'
 import { formatarCep, formatarCpf, formatarTelefone } from '@/lib/domain/cpf'
 import { idadeEm } from '@/lib/domain/datas'
+import { ehCelular } from '@/lib/domain/whatsapp'
+import {
+  TEXTO_TERMO_WHATSAPP,
+  VERSAO_TERMO_WHATSAPP,
+  temConsentimentoWhatsapp,
+} from '@/lib/mensageria/consentimento'
 import { acharPaciente, acharPacienteResumo, alertasDoPaciente } from '@/lib/pacientes/consultas'
 import type { Metadata } from 'next'
 import Link from 'next/link'
@@ -22,10 +29,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const p = await acharPaciente(ator, id)
   if (!p) notFound()
 
-  const [alertas, responsavel] = await Promise.all([
+  const [alertas, responsavel, autorizadoWhatsapp] = await Promise.all([
     // Recepção também vê alertas: é segurança do paciente na cadeira.
     pode(ator.perfil, 'alerta_clinico', 'ler') ? alertasDoPaciente(id) : Promise.resolve([]),
     p.responsavelLegalId ? acharPacienteResumo(p.responsavelLegalId) : Promise.resolve(null),
+    temConsentimentoWhatsapp(id),
   ])
 
   const hoje = new Date().toISOString().slice(0, 10)
@@ -113,6 +121,19 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <Linha rotulo="E-mail">{p.email ?? '—'}</Linha>
               <Linha rotulo="Indicação">{p.indicadoPor ?? '—'}</Linha>
             </dl>
+
+            {/* Consentimento LGPD do canal. Fica junto ao telefone porque é
+                sobre ele que a autorização fala. */}
+            <div className="mt-3 border-t border-border pt-3">
+              <ConsentimentoWhatsapp
+                pacienteId={p.id}
+                autorizado={autorizadoWhatsapp}
+                temCelular={ehCelular(p.telefoneWhatsapp ?? p.telefone ?? '')}
+                termo={TEXTO_TERMO_WHATSAPP}
+                versao={VERSAO_TERMO_WHATSAPP}
+                podeEditar={pode(ator.perfil, 'paciente', 'editar')}
+              />
+            </div>
           </CardBody>
         </Card>
 

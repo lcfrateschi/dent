@@ -54,6 +54,20 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **Faltou (no-show)** | Não compareceu e não avisou. Métrica que o WhatsApp da Fase 9 existe para reduzir. |
 | **Encaixe** ⚠️ | Agendamento inserido fora da grade padrão, geralmente urgência. É uma `origem`, não um status. |
 
+## WhatsApp
+
+| Termo | Definição |
+|---|---|
+| **Lembrete** | Mensagem enviada antes da consulta pedindo confirmação. Padrão: 24 h antes, sempre dentro de 08:00–20:00 locais. Não menciona procedimento — dado clínico não vai para o WhatsApp. |
+| **Chave de idempotência** | Identificador do lembrete (`lembrete:<agendamento>:<início ISO>`). É UNIQUE no banco, então reprocessar não gera segunda mensagem; remarcar muda o início, logo gera lembrete próprio do horário novo. |
+| **Fila** | `mensagem_whatsapp`. A ação só insere a linha; quem envia é um processo separado. Chamar a Meta dentro da transação faria rollback de coisa que já aconteceu no mundo. |
+| **Travada** | Mensagem reivindicada para envio (`enviando`) que nunca concluiu. **Não é reenviada automaticamente**: pode ter sido entregue. Aparece na tela para decisão humana. |
+| **Interpretação** | O que o sistema entendeu da resposta livre do paciente: *confirmou*, *cancelou* ou *não entendido*. Dúvida ("não sei se consigo") é *não entendido* e não altera a agenda. |
+| **Reentrega** | A Meta reenvia o webhook quando não recebe 200 rápido. O `wamid` é UNIQUE em `resposta_whatsapp`, então a segunda entrega não reprocessa. |
+| **`wamid`** | Identificador da mensagem na Meta. Liga o webhook de status (entregue, lida, falhou) à linha da fila. |
+| **Template** | Mensagem pré-aprovada pela Meta, com variáveis posicionais. Obrigatório fora da janela de 24 h desde a última mensagem do paciente. |
+| **E.164** | Formato internacional do telefone, sem sinais: `5511987654321`. Celular brasileiro de 8 dígitos ganha o nono; fixo não. |
+
 ## Financeiro
 
 | Termo | Definição |
@@ -85,5 +99,6 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **Dado sensível** | Dado de saúde é sensível por definição legal. Todo acesso é auditável — inclusive leitura. |
 | **Base legal** | Fundamento do tratamento do dado: consentimento, tutela da saúde, ou obrigação legal. Registrado por paciente. |
 | **Consentimento** | Aceite versionado de um termo específico, com data, IP e hash do texto aceito. Revogável. |
+| **Consentimento de WhatsApp** | Consentimento com `finalidade = 'contato_whatsapp'`. Exigido por trigger antes de qualquer mensagem entrar na fila: o dado sai da clínica para infraestrutura de terceiro, por uma finalidade de comodidade. Revogar cancela o que ainda não saiu. |
 | **Titular** | Na LGPD, o paciente (dono do dado). Não confundir com titular de convênio. |
 | **Retenção** | Prontuário odontológico: guarda mínima de 20 anos (CFO). Anonimização só depois disso. |

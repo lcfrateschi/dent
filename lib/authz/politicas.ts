@@ -21,6 +21,14 @@ export type Recurso =
   | 'odontograma'
   | 'plano_tratamento'
   | 'agenda'
+  /**
+   * Lembretes de WhatsApp e respostas dos pacientes (Fase 9).
+   *
+   * Não é recurso clínico: por decisão de projeto a mensagem não carrega
+   * procedimento nem diagnóstico, só nome, profissional, data e hora — a tela do
+   * celular do paciente é lida por outras pessoas. Ver lib/domain/textoMensagem.ts.
+   */
+  | 'mensageria'
   | 'orcamento'
   | 'cobranca'
   | 'pagamento'
@@ -55,6 +63,8 @@ const MATRIZ: Matriz = {
     odontograma: ['ler', 'criar', 'editar'],
     plano_tratamento: ['ler', 'criar', 'editar', 'excluir'],
     agenda: ['ler', 'criar', 'editar'],
+    // Vê se o paciente confirmou; não é quem opera a fila de mensagens.
+    mensageria: ['ler'],
     orcamento: ['ler', 'criar', 'editar'],
     // Vê o que foi cobrado do seu paciente, mas não mexe em dinheiro.
     cobranca: ['ler'],
@@ -71,6 +81,8 @@ const MATRIZ: Matriz = {
     // Precisa VER alergia e anticoagulante — é segurança do paciente na cadeira.
     alerta_clinico: ['ler'],
     agenda: ['ler', 'criar', 'editar', 'excluir'],
+    // Dona do canal: envia lembrete, resolve o que a máquina não entendeu.
+    mensageria: ['ler', 'criar', 'editar'],
     orcamento: ['ler', 'criar'],
     cobranca: ['ler', 'criar'],
     pagamento: ['ler', 'criar'],
@@ -101,6 +113,8 @@ const MATRIZ: Matriz = {
     auditoria: ['ler', 'exportar'],
     paciente: ['ler', 'criar', 'editar', 'excluir'],
     agenda: ['ler', 'editar'],
+    // Lê para diagnosticar integração; não confirma consulta por ninguém.
+    mensageria: ['ler'],
     relatorio_clinico: ['ler'],
     relatorio_financeiro: ['ler', 'exportar'],
   },
@@ -161,6 +175,7 @@ export const ROTULO_RECURSO: Readonly<Record<Recurso, string>> = {
   odontograma: 'Odontograma',
   plano_tratamento: 'Planos de tratamento',
   agenda: 'Agenda',
+  mensageria: 'WhatsApp',
   orcamento: 'Orçamentos',
   cobranca: 'Cobranças',
   pagamento: 'Pagamentos',

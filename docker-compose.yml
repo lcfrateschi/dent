@@ -51,6 +51,16 @@ services:
       WATCHPACK_POLLING: 'true'
       AUTH_SECRET: ${AUTH_SECRET:-dev-secret-trocar-em-producao-0123456789abcdef}
       AUTH_TRUST_HOST: 'true'
+      # WhatsApp: 'simulado' é o padrão de propósito. Ver
+      # lib/mensageria/provedor/index.ts — cair para o provedor real por omissão
+      # mandaria mensagem de teste para telefone de paciente.
+      WHATSAPP_PROVEDOR: ${WHATSAPP_PROVEDOR:-simulado}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      # Segredos com default de desenvolvimento, recusados em produção por
+      # lib/auth/segredo.ts. Sem eles o webhook responde 403 a tudo.
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-dev-whatsapp-app-secret-trocar-em-producao}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-dev-verify-token}
     ports:
       - '${APP_PORT:-3000}:3000'
     depends_on:
@@ -79,6 +89,11 @@ services:
       # a subir em produção com o segredo de desenvolvimento.
       AUTH_SECRET: ${AUTH_SECRET:-dev-secret-trocar-em-producao-0123456789abcdef}
       AUTH_TRUST_HOST: 'true'
+      WHATSAPP_PROVEDOR: ${WHATSAPP_PROVEDOR:-simulado}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
     ports:
       - '${APP_PORT:-3000}:3000'
     depends_on:

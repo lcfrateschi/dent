@@ -133,7 +133,12 @@ export const statusParcelaEnum = pgEnum('status_parcela', [
   'cancelada',
 ])
 
-/** Base de cálculo da comissão do profissional. Confirmar com a clínica (ver GLOSSARIO). */
+/**
+ * Base de cálculo da comissão. A clínica decidiu `valor_recebido` (2026-07-26):
+ * comissão sobre o que entrou no caixa, não sobre o que foi executado.
+ * `valor_executado` fica no enum porque é a outra prática de mercado e a decisão
+ * é por profissional — não é código morto.
+ */
 export const baseComissaoEnum = pgEnum('base_comissao', ['valor_executado', 'valor_recebido'])
 
 // ── Documentos ────────────────────────────────────────────────────────────────
@@ -147,6 +152,42 @@ export const tipoDocumentoEnum = pgEnum('tipo_documento', [
   'exame',
   'documento_pessoal',
   'outro',
+])
+
+// ── Mensageria (WhatsApp) ─────────────────────────────────────────────────────
+export const tipoMensagemEnum = pgEnum('tipo_mensagem', [
+  'lembrete_consulta',
+  'confirmacao_recebida',
+  'cancelamento_recebido',
+  'aviso_geral',
+])
+
+/**
+ * Ciclo de vida da mensagem de saída.
+ *
+ * `enviando` é a reivindicação do worker, e **não volta para `pendente`**: se o
+ * processo morreu depois de chamar a Meta, ninguém sabe se a mensagem saiu.
+ * Reenviar por conta própria arrisca mandar duas vezes, então a linha fica
+ * travada e visível para um humano decidir. Ver a trigger de transição em
+ * drizzle/0008_mensageria.sql.
+ */
+export const situacaoMensagemEnum = pgEnum('situacao_mensagem', [
+  'pendente',
+  'enviando',
+  'enviada',
+  'entregue',
+  'lida',
+  'falhou',
+  'cancelada',
+])
+
+export const provedorMensagemEnum = pgEnum('provedor_mensagem', ['meta', 'simulado'])
+
+/** Espelha o tipo `Interpretacao` de lib/domain/whatsapp.ts. */
+export const interpretacaoRespostaEnum = pgEnum('interpretacao_resposta', [
+  'confirmou',
+  'cancelou',
+  'nao_entendido',
 ])
 
 // ── Auditoria ─────────────────────────────────────────────────────────────────

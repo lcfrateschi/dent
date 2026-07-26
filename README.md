@@ -59,7 +59,7 @@ npm run docker:up        # sobe tudo
 npm run docker:logs      # segue o log do app
 npm run docker:down      # para
 npm run docker:reset     # apaga o volume e recria o banco do zero
-npm run db:verificar     # prova as invariantes do banco (58 casos)
+npm run db:verificar     # prova as invariantes do banco (85 casos)
 ```
 
 Variante de produção (imagem enxuta, `output: standalone`, roda sem root):
@@ -84,9 +84,9 @@ npm run dev
 ## Testes
 
 ```bash
-npm test               # 432 testes (Vitest, sem banco)
+npm test               # 522 testes (Vitest, sem banco)
 npm run typecheck
-npm run db:verificar   # 58 invariantes no banco (precisa do compose de pé)
+npm run db:verificar   # 85 invariantes no banco (precisa do compose de pé)
 ```
 
 Os testes de domínio não tocam o banco de propósito: são as regras puras
@@ -94,6 +94,42 @@ Os testes de domínio não tocam o banco de propósito: são as regras puras
 As invariantes que vivem no Postgres — prontuário append-only, conflito de
 agenda, soma das parcelas — têm verificação própria em
 `docker/verificar-invariantes.sql`.
+
+## WhatsApp (Fase 9)
+
+O sistema manda lembrete de consulta e entende a resposta do paciente. **Funciona
+sem conta na Meta**: o provedor padrão é um simulador que reproduz as recusas
+reais da API (número sem WhatsApp, template sem parâmetro, limite de envio), e a
+tela avisa em destaque que nada está saindo de verdade.
+
+```bash
+# fluxo inteiro contra o Postgres: enfileira → despacha → paciente responde →
+# webhook assinado → agenda confirmada e depois cancelada
+docker compose exec app npm run whatsapp:demo
+
+# uma passada do processo (o que o cron chama a cada 10 min)
+docker compose exec app npm run whatsapp:despachar
+```
+
+Para enviar de verdade, além de `WHATSAPP_PROVEDOR=meta` e das credenciais
+(ver `.env.example`), a conta precisa de um **template aprovado** — fora da
+janela de 24 horas desde a última mensagem do paciente, a Meta recusa texto
+livre. O template usado é `lembrete_consulta_pt_br`, com quatro variáveis nesta
+ordem: primeiro nome, clínica, data e hora em português, profissional.
+
+O webhook fica em `POST /api/whatsapp/webhook` e é a única rota pública que
+altera a agenda. Ela exige o HMAC `X-Hub-Signature-256`; sem `WHATSAPP_APP_SECRET`
+configurado, responde 403 a tudo — nunca "aceita porque não há segredo".
+
+Três decisões que valem saber antes de operar:
+
+- **Nunca envia duas vezes.** A chave de idempotência inclui o horário do
+  atendimento: reprocessar não gera nada, remarcar gera um lembrete novo.
+- **Mensagem travada não é reenviada sozinha.** Se o processo morreu depois de
+  chamar a Meta, ninguém sabe se ela entregou. A linha fica visível na tela e a
+  decisão é humana — perder um lembrete é barato, mandar dois não.
+- **Dúvida não vira ação.** "Não sei se consigo" não cancela nada; vai para a
+  fila da recepção. O interpretador é conservador de propósito.
 
 ## Onde está o quê
 
@@ -104,6 +140,7 @@ app/
   configurar-mfa/  obrigatório no primeiro acesso
   design/          playground do design system (fonte dos previews)
   api/auth/        rotas do Auth.js
+  api/whatsapp/    webhook da Meta — pública, autenticada por HMAC
 middleware.ts      guarda de rotas + trava de MFA
 components/
   agenda/          grade semanal e estilos de status
@@ -119,15 +156,17 @@ lib/
   orcamento/       plano de tratamento e documento congelado
   prontuario/      evolução assinada, retificação e linha do tempo
   financeiro/      cobrança, parcelas, pagamento, conciliação e comissão
+  mensageria/      fila do WhatsApp, provedores, webhook e resposta do paciente
   odontograma/     tradução item_plano/execucao ↔ estado das faces
   pacientes/       schema Zod, consultas e server actions
-  db/schema/       27 tabelas Drizzle, uma área do domínio por arquivo
+  db/schema/       29 tabelas Drizzle, uma área do domínio por arquivo
   db/seed/         dados de referência + primeiro admin
   domain/          regras puras, com .test.ts ao lado
 drizzle/
   0000_inicial.sql      schema gerado
   0001_constraints.sql  triggers e EXCLUDE — as garantias legais e financeiras
   0004_orcamento_congelado.sql  documento comercial imutável depois de enviado
+  0009_mensageria_travas.sql    idempotência do envio e append-only das respostas
 docker/
   migrate.sh                 migrate + seed
   verificar-invariantes.sql  prova das invariantes
@@ -161,6 +200,11 @@ período da agenda, ambas com `aria-label`.
 | Exportação de prontuário exige motivo | `lib/prontuario/consultas.ts` |
 | Pagamento não se exclui, estorna-se | triggers em `drizzle/0007` |
 | `parcela.status` mantido pelo banco | trigger a cada pagamento |
+| Lembrete nunca sai duas vezes | `chave_idempotencia` UNIQUE + `enviado_em` imutável (`drizzle/0009`) |
+| Webhook do WhatsApp exige HMAC | `lib/mensageria/assinatura.ts`; sem segredo, 403 |
+| Reentrega de webhook não reprocessa | `resposta_whatsapp.id_externo` UNIQUE |
+| Sem consentimento LGPD, nada é enfileirado | trigger em `drizzle/0009` |
+| Mensagem e resposta não se excluem | triggers em `drizzle/0009` |
 | Tokens do código = tokens do catálogo | `lib/ui/tokens.test.ts` |
 
 As três separações de acesso pedidas pela clínica, todas cobertas por teste:
@@ -171,7 +215,7 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 
 | Fase | Situação |
 |---|---|
-| 1 — Domínio e banco | pronta, verificada em Postgres real (58 invariantes) |
+| 1 — Domínio e banco | pronta, verificada em Postgres real (85 invariantes) |
 | 2 — Design system | tokens, componentes base, odontograma pronto |
 | 3 — Esqueleto, MFA, RBAC, CRUD de paciente | pronta |
 | 4 — Agenda | pronta |
@@ -179,5 +223,5 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 6 — Plano de tratamento e orçamento | pronta |
 | 7 — Prontuário e evoluções assinadas | pronta |
 | 8 — Financeiro | pronta |
-| 9 — Confirmação por WhatsApp | a fazer |
+| 9 — Confirmação por WhatsApp | pronta (provedor simulado; Meta pendente de conta) |
 | 6+ | ver `ROADMAP.md` |

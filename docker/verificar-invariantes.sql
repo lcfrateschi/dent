@@ -504,6 +504,232 @@ $$, $$
   VALUES ('dddd4444-4444-4444-8444-444444444443','10.00','2026-11-01','pix')
 $$]);
 
+-- ── 9. Mensageria (WhatsApp) ────────────────────────────────────────────────
+--
+-- A promessa "nunca manda duas vezes" é o coração da fase. Aqui ela é provada
+-- contra o banco, não contra a intenção do código.
+-- ────────────────────────────────────────────────────────────────────────────
+
+-- Antes de qualquer caso: as tabelas TÊM de existir.
+--
+-- Isto não é zelo — é uma armadilha real que aconteceu. Com a migration 0008 não
+-- aplicada, todo `espera_erro` "passou" com 42P01 (relation does not exist): o
+-- comando falhou, que é o que o caso esperava. Um relatório verde provando
+-- invariante nenhuma. Faltar tabela agora derruba o script na hora.
+DO $$
+BEGIN
+  IF to_regclass('mensagem_whatsapp') IS NULL OR to_regclass('resposta_whatsapp') IS NULL THEN
+    RAISE EXCEPTION
+      'tabelas da mensageria não existem — rode as migrations 0008/0009 antes (docker compose build migrate && docker compose run --rm migrate)';
+  END IF;
+END $$;
+
+-- Fixture: um agendamento futuro e o consentimento LGPD do paciente.
+SET CONSTRAINTS ALL DEFERRED;
+
+INSERT INTO agendamento (id, paciente_id, profissional_id, inicio, fim) VALUES
+  ('55555555-5555-5555-5555-555555555599',
+   '33333333-3333-3333-3333-333333333333',
+   '22222222-2222-2222-2222-222222222222',
+   '2026-12-01 14:00:00-03', '2026-12-01 15:00:00-03');
+
+SELECT espera_erro('whatsapp: enfileirar SEM consentimento LGPD', ARRAY[$$
+  INSERT INTO mensagem_whatsapp
+    (paciente_id, agendamento_id, tipo, chave_idempotencia, destino, corpo, agendado_para)
+  VALUES ('33333333-3333-3333-3333-333333333333',
+          '55555555-5555-5555-5555-555555555599',
+          'lembrete_consulta', 'lembrete:sem-consentimento', '5511987654321',
+          'Olá!', '2026-11-30 14:00:00-03')
+$$]);
+
+INSERT INTO consentimento
+  (id, paciente_id, base_legal, finalidade, versao_termo, texto_hash)
+VALUES ('66666666-6666-4666-8666-666666666661',
+        '33333333-3333-3333-3333-333333333333',
+        'consentimento', 'contato_whatsapp', '1.0', repeat('a', 64));
+
+SELECT espera_ok('whatsapp: enfileirar COM consentimento ativo', ARRAY[$$
+  INSERT INTO mensagem_whatsapp
+    (id, paciente_id, agendamento_id, tipo, chave_idempotencia, destino, corpo, agendado_para)
+  VALUES ('77777777-7777-4777-8777-777777777771',
+          '33333333-3333-3333-3333-333333333333',
+          '55555555-5555-5555-5555-555555555599',
+          'lembrete_consulta',
+          'lembrete:55555555-5555-5555-5555-555555555599:2026-12-01T17:00:00.000Z',
+          '5511987654321', 'Olá, lembrete da consulta.', '2026-11-30 14:00:00-03')
+$$]);
+
+SELECT espera_erro('whatsapp: MESMA chave de idempotência (job rodou duas vezes)', ARRAY[$$
+  INSERT INTO mensagem_whatsapp
+    (paciente_id, agendamento_id, tipo, chave_idempotencia, destino, corpo, agendado_para)
+  VALUES ('33333333-3333-3333-3333-333333333333',
+          '55555555-5555-5555-5555-555555555599',
+          'lembrete_consulta',
+          'lembrete:55555555-5555-5555-5555-555555555599:2026-12-01T17:00:00.000Z',
+          '5511987654321', 'Olá, lembrete da consulta.', '2026-11-30 14:00:00-03')
+$$]);
+
+SELECT espera_erro('whatsapp: destino fora de E.164', ARRAY[$$
+  INSERT INTO mensagem_whatsapp
+    (paciente_id, tipo, chave_idempotencia, destino, corpo, agendado_para)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'aviso_geral', 'chave-e164-ruim',
+          '(11) 98765-4321', 'Olá!', '2026-11-30 14:00:00-03')
+$$]);
+
+SELECT espera_erro('whatsapp: pendente com enviado_em preenchido', ARRAY[$$
+  INSERT INTO mensagem_whatsapp
+    (paciente_id, tipo, chave_idempotencia, destino, corpo, agendado_para, enviado_em)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'aviso_geral', 'chave-pendente-enviada',
+          '5511987654321', 'Olá!', '2026-11-30 14:00:00-03', now())
+$$]);
+
+SELECT espera_erro('whatsapp: enviada sem enviado_em', ARRAY[$$
+  INSERT INTO mensagem_whatsapp
+    (paciente_id, tipo, chave_idempotencia, destino, corpo, agendado_para, situacao)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'aviso_geral', 'chave-enviada-sem-carimbo',
+          '5511987654321', 'Olá!', '2026-11-30 14:00:00-03', 'enviada')
+$$]);
+
+SELECT espera_erro('whatsapp: pular de pendente direto para enviada', ARRAY[$$
+  UPDATE mensagem_whatsapp SET situacao='enviada', enviado_em=now()
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_ok('whatsapp: reivindicar (pendente -> enviando)', ARRAY[$$
+  UPDATE mensagem_whatsapp SET situacao='enviando', reivindicado_em=now(), tentativas=1
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_erro('whatsapp: devolver enviando para pendente (risco de duplicar)', ARRAY[$$
+  UPDATE mensagem_whatsapp SET situacao='pendente'
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_ok('whatsapp: concluir envio (enviando -> enviada)', ARRAY[$$
+  UPDATE mensagem_whatsapp
+     SET situacao='enviada', enviado_em='2026-11-30 14:00:05-03',
+         provedor='simulado', id_externo='wamid.TESTE1'
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_erro('whatsapp: SOBRESCREVER enviado_em de mensagem já enviada', ARRAY[$$
+  UPDATE mensagem_whatsapp SET enviado_em=now()
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_erro('whatsapp: alterar o corpo depois de enviado', ARRAY[$$
+  UPDATE mensagem_whatsapp SET corpo='outro texto'
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_erro('whatsapp: alterar o destino depois de enviado', ARRAY[$$
+  UPDATE mensagem_whatsapp SET destino='5511999999999'
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_erro('whatsapp: trocar a chave de idempotência', ARRAY[$$
+  UPDATE mensagem_whatsapp SET chave_idempotencia='outra-chave'
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_ok('whatsapp: webhook marca entregue e depois lida', ARRAY[$$
+  UPDATE mensagem_whatsapp SET situacao='entregue', entregue_em=now()
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$, $$
+  UPDATE mensagem_whatsapp SET situacao='lida', lida_em=now()
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_erro('whatsapp: retroceder de lida para entregue', ARRAY[$$
+  UPDATE mensagem_whatsapp SET situacao='entregue'
+   WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+SELECT espera_erro('whatsapp: excluir mensagem enviada', ARRAY[$$
+  DELETE FROM mensagem_whatsapp WHERE id='77777777-7777-4777-8777-777777777771'
+$$]);
+
+-- Falha reportada pela Meta DEPOIS de a chamada ter dado 200: a linha guarda
+-- enviado_em e falhou_em ao mesmo tempo, porque as duas coisas aconteceram.
+SELECT espera_ok('whatsapp: Meta reporta falha depois de aceitar o envio', ARRAY[$$
+  INSERT INTO mensagem_whatsapp
+    (id, paciente_id, tipo, chave_idempotencia, destino, corpo, agendado_para,
+     situacao, enviado_em, provedor, id_externo)
+  VALUES ('77777777-7777-4777-8777-777777777772',
+          '33333333-3333-3333-3333-333333333333', 'aviso_geral', 'chave-falha-tardia',
+          '5511987654321', 'Olá!', '2026-11-30 14:00:00-03',
+          'enviada', now(), 'simulado', 'wamid.TESTE2')
+$$, $$
+  UPDATE mensagem_whatsapp
+     SET situacao='falhou', falhou_em=now(), erro_codigo='131026',
+         erro_mensagem='Número não tem WhatsApp'
+   WHERE id='77777777-7777-4777-8777-777777777772'
+$$]);
+
+SELECT espera_erro('whatsapp: falhou sem motivo registrado', ARRAY[$$
+  INSERT INTO mensagem_whatsapp
+    (paciente_id, tipo, chave_idempotencia, destino, corpo, agendado_para, situacao, falhou_em)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'aviso_geral', 'chave-falha-sem-motivo',
+          '5511987654321', 'Olá!', '2026-11-30 14:00:00-03', 'falhou', now())
+$$]);
+
+SELECT espera_erro('whatsapp: dois wamid iguais em mensagens diferentes', ARRAY[$$
+  INSERT INTO mensagem_whatsapp
+    (paciente_id, tipo, chave_idempotencia, destino, corpo, agendado_para,
+     situacao, enviado_em, id_externo)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'aviso_geral', 'chave-wamid-repetido',
+          '5511987654321', 'Olá!', '2026-11-30 14:00:00-03',
+          'enviada', now(), 'wamid.TESTE1')
+$$]);
+
+-- Resposta recebida: a trava contra reentrega de webhook.
+SELECT espera_ok('whatsapp: registrar resposta do paciente', ARRAY[$$
+  INSERT INTO resposta_whatsapp
+    (id, id_externo, remetente, paciente_id, mensagem_id, agendamento_id, texto, interpretacao)
+  VALUES ('88888888-8888-4888-8888-888888888881', 'wamid.RESP1', '5511987654321',
+          '33333333-3333-3333-3333-333333333333',
+          '77777777-7777-4777-8777-777777777771',
+          '55555555-5555-5555-5555-555555555599',
+          'Sim', 'confirmou')
+$$]);
+
+SELECT espera_erro('whatsapp: REENTREGA do mesmo webhook (mesmo wamid)', ARRAY[$$
+  INSERT INTO resposta_whatsapp (id_externo, remetente, texto, interpretacao)
+  VALUES ('wamid.RESP1', '5511987654321', 'Sim', 'confirmou')
+$$]);
+
+SELECT espera_erro('whatsapp: alterar o texto recebido do paciente', ARRAY[$$
+  UPDATE resposta_whatsapp SET texto='Não'
+   WHERE id='88888888-8888-4888-8888-888888888881'
+$$]);
+
+SELECT espera_erro('whatsapp: alterar a interpretação registrada', ARRAY[$$
+  UPDATE resposta_whatsapp SET interpretacao='cancelou'
+   WHERE id='88888888-8888-4888-8888-888888888881'
+$$]);
+
+SELECT espera_ok('whatsapp: recepção marca a resposta como tratada', ARRAY[$$
+  UPDATE resposta_whatsapp SET tratado_em=now(), acao_tomada='Ligou para o paciente'
+   WHERE id='88888888-8888-4888-8888-888888888881'
+$$]);
+
+SELECT espera_erro('whatsapp: excluir resposta do paciente', ARRAY[$$
+  DELETE FROM resposta_whatsapp WHERE id='88888888-8888-4888-8888-888888888881'
+$$]);
+
+-- A finalidade do consentimento é a mesma string em dois lugares: na trigger
+-- (drizzle/0009) e em lib/mensageria/consentimento.ts. Se divergirem, todo envio
+-- passa a ser recusado — este caso é o que denuncia.
+SELECT espera_erro('whatsapp: consentimento revogado bloqueia novo envio', ARRAY[$$
+  UPDATE consentimento SET revogado_em=now()
+   WHERE id='66666666-6666-4666-8666-666666666661'
+$$, $$
+  INSERT INTO mensagem_whatsapp
+    (paciente_id, tipo, chave_idempotencia, destino, corpo, agendado_para)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'aviso_geral', 'chave-pos-revogacao',
+          '5511987654321', 'Olá!', '2026-11-30 14:00:00-03')
+$$]);
+
 -- ── Relatório ───────────────────────────────────────────────────────────────
 \echo ''
 \echo '════════════════════════════════════════════════════════════════════════'

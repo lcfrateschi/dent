@@ -66,11 +66,23 @@ Ele desconhece as EXCLUDE constraints e os triggers de `drizzle/0001_constraints
 derrubá-los silenciosamente — junto com o append-only do prontuário. O script foi removido do
 `package.json` de propósito. Use `db:generate` + `db:migrate`.
 
-Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 35 casos que provam
-as invariantes contra um Postgres real.
+Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 85 casos que provam
+as invariantes contra um Postgres real. O script **falha na hora** se uma tabela esperada não
+existir — um `espera_erro` com a tabela ausente "passa" pelo motivo errado, e isso já produziu
+um relatório verde provando invariante nenhuma.
 
 ### Pendências conhecidas
 
+- **WhatsApp roda no provedor SIMULADO.** Nenhuma mensagem sai de verdade até a clínica ter
+  conta WhatsApp Business com o template `lembrete_consulta_pt_br` aprovado. `lib/mensageria/
+  provedor/meta.ts` foi escrito pela documentação da Cloud API v21 e **nunca executou contra a
+  API real** — é o único arquivo da fase que precisa de conferência quando as credenciais
+  existirem. Todo o resto (fila, idempotência, webhook, efeito na agenda) está verificado.
+- **O despacho precisa de um cron.** `npm run whatsapp:despachar` é seguro de rodar em
+  paralelo e quantas vezes quiser (chave de idempotência + `SKIP LOCKED`). A cada 10 minutos
+  basta: o horário de envio já está gravado em `agendado_para`.
+- **`usuario.mfa_secret` está em texto claro.** Não é bypass de autenticação — ainda exige a
+  senha — mas agrava um vazamento de banco. Cifrar exige chave fora do banco e rotação.
 - **`codigo_tuss` está nulo no seed, de propósito.** Código TUSS inventado gera glosa. A fonte
   é a Terminologia Unificada em Saúde Suplementar da ANS (Tabela 22, procedimentos
   odontológicos). Importar a versão vigente antes da Fase 13.
@@ -84,6 +96,12 @@ as invariantes contra um Postgres real.
   clínica. A comissão entra na base quando o pagamento é conciliado, não quando o procedimento é
   executado. Comissão paga sobre execução vira adiantamento quando o paciente atrasa.
 - **Cor de marca**: verde-petróleo `#0f766e`. A clínica não tem identidade visual a aplicar.
+- **Mensagem travada em `enviando` NÃO é reenviada automaticamente.** Se o processo morreu
+  depois de chamar a Meta, ninguém sabe se ela entregou. A linha fica visível na tela de
+  WhatsApp e a decisão é humana. Perder um lembrete custa uma ligação; mandar dois custa a
+  confiança do paciente. A trigger de transição em `drizzle/0009` impede `enviando → pendente`.
+- **A mensagem de WhatsApp não carrega dado clínico.** Só nome, profissional, data e hora — a
+  tela do celular do paciente é lida por outras pessoas. Ver `lib/domain/textoMensagem.ts`.
 
 ## Estrutura
 

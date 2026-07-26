@@ -21,7 +21,10 @@ const { auth } = NextAuth(configBase)
  *    exigência de MFA seria decorativa.
  */
 
-const PUBLICAS = ['/entrar', '/api/auth', '/design']
+// `/api/whatsapp` é público porque a Meta chama de fora — não existe sessão.
+// A autenticação dele é o HMAC do cabeçalho X-Hub-Signature-256, verificado na
+// própria rota (lib/mensageria/assinatura.ts). Sem assinatura válida, 403.
+const PUBLICAS = ['/entrar', '/api/auth', '/api/whatsapp', '/design']
 
 export default auth((req) => {
   const { pathname } = req.nextUrl

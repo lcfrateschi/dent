@@ -46,7 +46,7 @@ Estrutura de rotas — a separação entre staff e portal é de segurança, não
 app/
   (staff)/         sessão de staff, RBAC por perfil
   (portal)/        sessão de paciente, escopo travado ao próprio prontuário
-  api/webhooks/    WhatsApp, pagamento
+  api/whatsapp/    webhook da Meta (implementado); pagamento vem depois
 lib/
   db/              schema, migrations, seeds
   domain/          regras puras e testáveis (parcelamento, conflito de agenda, faces)
@@ -149,7 +149,7 @@ Depois de pronto, cada módulo seguinte é repetição de um padrão já provado
 | 6 | Plano de tratamento + Orçamento | 2 | Preço particular **e** por convênio; PDF |
 | 7 | Prontuário / Evolução | 1,5 | Append-only, assinado, retificação encadeada |
 | 8 | Financeiro particular | 2,5 | Parcelas, recebimento, inadimplência, comissão |
-| 9 | **WhatsApp** | 1 | Meta Cloud API. Confirmação, lembrete 24h, resposta → status |
+| 9 | **WhatsApp** | 1 | ✅ pronta. Fila idempotente, webhook assinado, resposta → status. Provedor simulado enquanto não há conta Meta |
 | | **↑ MVP interno operável** | **~14** | |
 | 10 | Imagens e documentos | 1,5 | Radiografias, antes/depois, atestado, receita |
 | 11 | Dashboard e relatórios | 1,5 | Faturamento, ocupação, no-show, procedimentos |

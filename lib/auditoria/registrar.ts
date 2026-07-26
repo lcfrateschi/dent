@@ -75,6 +75,45 @@ export async function registrar(evento: EventoAuditoria): Promise<void> {
 }
 
 /**
+ * Evento provocado pelo próprio paciente, não por alguém da clínica: resposta de
+ * WhatsApp (Fase 9) e portal (Fase 12).
+ *
+ * Merece função própria porque o ator é de outra natureza — `atorTipo` sai como
+ * `paciente`. Registrar isso como `sistema` esconderia a informação que mais
+ * importa depois: quando a agenda mostra "cancelado", foi o paciente que pediu,
+ * e a prova está aqui e na `resposta_whatsapp`.
+ */
+export async function registrarDoPaciente(evento: {
+  readonly acao: Acao
+  readonly entidade: string
+  readonly entidadeId?: string | null
+  readonly pacienteId: string
+  readonly detalhes?: Record<string, unknown>
+}): Promise<void> {
+  try {
+    const { ip, userAgent } = await origemDaRequisicao()
+    await db.insert(auditLog).values({
+      atorTipo: 'paciente',
+      atorId: evento.pacienteId,
+      atorEmail: null,
+      acao: evento.acao,
+      entidade: evento.entidade,
+      entidadeId: evento.entidadeId ?? null,
+      pacienteId: evento.pacienteId,
+      ip,
+      userAgent,
+      detalhes: evento.detalhes ?? null,
+    })
+  } catch (e) {
+    console.error('[auditoria] falha ao registrar evento do paciente', {
+      acao: evento.acao,
+      entidade: evento.entidade,
+      erro: e instanceof Error ? e.message : String(e),
+    })
+  }
+}
+
+/**
  * Atalho para leitura de dado clínico — o caso mais frequente e o mais fácil de
  * esquecer, justamente por não ser uma escrita.
  */
