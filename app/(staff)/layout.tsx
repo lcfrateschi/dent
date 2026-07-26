@@ -30,7 +30,7 @@ interface ItemMenu {
 const MENU: readonly ItemMenu[] = [
   { href: '/pacientes', rotulo: 'Pacientes', recurso: 'paciente', icone: 'pacientes' },
   { href: '/agenda', rotulo: 'Agenda', recurso: 'agenda', icone: 'agenda' },
-  { href: '/financeiro', rotulo: 'Financeiro', recurso: 'cobranca', icone: 'financeiro', fase: 8 },
+  { href: '/financeiro', rotulo: 'Financeiro', recurso: 'cobranca', icone: 'financeiro' },
   { href: '/convenios', rotulo: 'Convênios', recurso: 'convenio', icone: 'convenios', fase: 13 },
   { href: '/usuarios', rotulo: 'Usuários', recurso: 'usuario', icone: 'usuarios', fase: 3 },
   { href: '/auditoria', rotulo: 'Auditoria', recurso: 'auditoria', icone: 'auditoria', fase: 11 },

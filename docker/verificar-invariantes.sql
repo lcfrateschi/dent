@@ -412,6 +412,98 @@ SELECT espera_erro('plano: dois ativos para o mesmo paciente', ARRAY[$$
           '22222222-2222-2222-2222-222222222221', 'Segundo plano', 'ativo')
 $$]);
 
+
+-- ── 8. Financeiro (drizzle/0007) ────────────────────────────────────────────
+-- Estas fixtures rodam no NÍVEL DE TOPO, fora dos helpers — então precisam
+-- restaurar o modo deferido por conta própria. `SET CONSTRAINTS ALL IMMEDIATE`
+-- de um caso anterior vale para o resto da transação.
+SET CONSTRAINTS ALL DEFERRED;
+
+-- Fixtures: orçamento aprovado, para a cobrança poder existir.
+INSERT INTO orcamento (id, numero, paciente_id, status, validade_ate, valor_bruto, desconto, valor_total)
+VALUES ('bbbb2222-2222-4222-8222-222222222221', 991001,
+        '33333333-3333-3333-3333-333333333333', 'rascunho', '2026-12-31', '300.00', '0', '300.00');
+INSERT INTO orcamento_item (orcamento_id, descricao, quantidade, valor_unitario)
+VALUES ('bbbb2222-2222-4222-8222-222222222221', 'Tratamento', 1, '300.00');
+SET CONSTRAINTS ALL IMMEDIATE;
+UPDATE orcamento SET status='enviado', enviado_em=now() WHERE id='bbbb2222-2222-4222-8222-222222222221';
+UPDATE orcamento SET status='aprovado', decidido_em=now() WHERE id='bbbb2222-2222-4222-8222-222222222221';
+SET CONSTRAINTS ALL DEFERRED;
+
+-- Orçamento ainda em rascunho, para o caso negativo.
+INSERT INTO orcamento (id, numero, paciente_id, status, validade_ate, valor_bruto, desconto, valor_total)
+VALUES ('bbbb2222-2222-4222-8222-222222222222', 991002,
+        '33333333-3333-3333-3333-333333333333', 'rascunho', '2026-12-31', '100.00', '0', '100.00');
+INSERT INTO orcamento_item (orcamento_id, descricao, quantidade, valor_unitario)
+VALUES ('bbbb2222-2222-4222-8222-222222222222', 'Outro', 1, '100.00');
+
+SELECT espera_erro('cobrança: sobre orçamento NÃO aprovado', ARRAY[$$
+  INSERT INTO cobranca (paciente_id, orcamento_id, valor_total, forma)
+  VALUES ('33333333-3333-3333-3333-333333333333','bbbb2222-2222-4222-8222-222222222222','100.00','pix')
+$$]);
+
+SELECT espera_ok('cobrança: 3 parcelas somando o total, sobra na primeira', ARRAY[$$
+  INSERT INTO cobranca (id, paciente_id, orcamento_id, valor_total, forma, qtd_parcelas)
+  VALUES ('cccc3333-3333-4333-8333-333333333331','33333333-3333-3333-3333-333333333333',
+          'bbbb2222-2222-4222-8222-222222222221','100.00','credito',3)
+$$, $$
+  INSERT INTO parcela (id, cobranca_id, numero, vencimento, valor) VALUES
+   ('dddd4444-4444-4444-8444-444444444441','cccc3333-3333-4333-8333-333333333331',1,'2026-11-01','33.34'),
+   ('dddd4444-4444-4444-8444-444444444442','cccc3333-3333-4333-8333-333333333331',2,'2026-12-01','33.33'),
+   ('dddd4444-4444-4444-8444-444444444443','cccc3333-3333-4333-8333-333333333331',3,'2027-01-01','33.33')
+$$], true);
+
+SELECT espera_erro('cobrança: DUAS para o mesmo orçamento', ARRAY[$$
+  INSERT INTO cobranca (paciente_id, orcamento_id, valor_total, forma)
+  VALUES ('33333333-3333-3333-3333-333333333333','bbbb2222-2222-4222-8222-222222222221','100.00','pix')
+$$]);
+
+-- O trigger mantém parcela.status: pagamento parcial → 'parcial'
+SELECT espera_ok('parcela: pagamento parcial deixa status "parcial"', ARRAY[$$
+  INSERT INTO pagamento (id, parcela_id, valor, pago_em, meio)
+  VALUES ('eeee5555-5555-4555-8555-555555555551','dddd4444-4444-4444-8444-444444444441','10.00','2026-11-01','pix')
+$$, $$
+  DO $x$ DECLARE s text; BEGIN
+    SELECT status::text INTO s FROM parcela WHERE id='dddd4444-4444-4444-8444-444444444441';
+    IF s <> 'parcial' THEN RAISE EXCEPTION 'status ficou "%" em vez de parcial', s; END IF;
+  END $x$
+$$], true);
+
+SELECT espera_ok('parcela: quitar deixa status "paga"', ARRAY[$$
+  INSERT INTO pagamento (parcela_id, valor, pago_em, meio)
+  VALUES ('dddd4444-4444-4444-8444-444444444441','23.34','2026-11-02','pix')
+$$, $$
+  DO $x$ DECLARE s text; BEGIN
+    SELECT status::text INTO s FROM parcela WHERE id='dddd4444-4444-4444-8444-444444444441';
+    IF s <> 'paga' THEN RAISE EXCEPTION 'status ficou "%" em vez de paga', s; END IF;
+  END $x$
+$$], true);
+
+SELECT espera_ok('parcela: estornar volta o status para "parcial"', ARRAY[$$
+  UPDATE pagamento SET estornado_em=now(), motivo_estorno='cheque devolvido'
+   WHERE id='eeee5555-5555-4555-8555-555555555551'
+$$, $$
+  DO $x$ DECLARE s text; BEGIN
+    SELECT status::text INTO s FROM parcela WHERE id='dddd4444-4444-4444-8444-444444444441';
+    IF s <> 'parcial' THEN RAISE EXCEPTION 'status ficou "%" em vez de parcial', s; END IF;
+  END $x$
+$$], true);
+
+SELECT espera_erro('pagamento: excluir em vez de estornar', ARRAY[$$
+  DELETE FROM pagamento WHERE parcela_id='dddd4444-4444-4444-8444-444444444441'
+$$]);
+
+SELECT espera_erro('cobrança: excluir com pagamento registrado', ARRAY[$$
+  DELETE FROM cobranca WHERE id='cccc3333-3333-4333-8333-333333333331'
+$$]);
+
+SELECT espera_erro('pagamento: em parcela cancelada', ARRAY[$$
+  UPDATE parcela SET status='cancelada' WHERE id='dddd4444-4444-4444-8444-444444444443'
+$$, $$
+  INSERT INTO pagamento (parcela_id, valor, pago_em, meio)
+  VALUES ('dddd4444-4444-4444-8444-444444444443','10.00','2026-11-01','pix')
+$$]);
+
 -- ── Relatório ───────────────────────────────────────────────────────────────
 \echo ''
 \echo '════════════════════════════════════════════════════════════════════════'

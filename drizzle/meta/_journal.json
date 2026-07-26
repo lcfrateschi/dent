@@ -50,6 +50,13 @@
       "when": 1785064815836,
       "tag": "0006_orcamento_numero_default",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785068055689,
+      "tag": "0007_financeiro_travas",
+      "breakpoints": true
     }
   ]
 }
