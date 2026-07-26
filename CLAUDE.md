@@ -75,9 +75,15 @@ as invariantes contra um Postgres real.
   é a Terminologia Unificada em Saúde Suplementar da ANS (Tabela 22, procedimentos
   odontológicos). Importar a versão vigente antes da Fase 13.
 - **Valores do catálogo são de partida** — revisar com a clínica.
-- **Termos ⚠️ do GLOSSARIO.md** precisam de validação com o dentista antes da Fase 4.
-  O mais relevante: base de cálculo da comissão (`clinica.base_comissao`) — sobre valor
-  executado ou sobre valor recebido?
+- **Termos ⚠️ do GLOSSARIO.md** ainda esperam validação com o dentista. Os que restam são de
+  vocabulário (titular de convênio, encaixe, faturado), não de regra de cálculo.
+
+### Decisões fechadas — não reabrir
+
+- **Comissão sobre valor RECEBIDO** (`clinica.base_comissao = 'valor_recebido'`), decidido pela
+  clínica. A comissão entra na base quando o pagamento é conciliado, não quando o procedimento é
+  executado. Comissão paga sobre execução vira adiantamento quando o paciente atrasa.
+- **Cor de marca**: verde-petróleo `#0f766e`. A clínica não tem identidade visual a aplicar.
 
 ## Estrutura
 

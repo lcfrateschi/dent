@@ -64,7 +64,7 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **Faturado** ⚠️ | Item executado que já foi lançado para cobrança — no particular, para a cobrança do paciente; no convênio, para uma guia. |
 | **Recebido** | O dinheiro entrou e foi conciliado. |
 | **Inadimplência** | Parcela vencida e não paga. |
-| **Comissão** ⚠️ | Percentual do profissional. Confirmar a base: sobre valor *executado* ou sobre valor *recebido*? Faz diferença grande no fluxo de caixa. |
+| **Comissão** | Percentual do profissional, calculado sobre o valor **recebido** — decidido pela clínica em 2026-07-26. Só entra na base depois de o dinheiro entrar e ser conciliado, não na execução. Protege o fluxo de caixa: comissão paga sobre execução vira adiantamento quando o paciente atrasa. |
 
 ## Convênio (Fase 13, mas o vocabulário entra agora)
 

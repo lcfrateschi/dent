@@ -1,6 +1,7 @@
 {
   "_leia": "Snapshot dos tokens publicados no projeto 'dent Design System' no Claude Design (projectId c8427061-0628-46ec-8702-b26b48a1c2c2). O teste em lib/ui/tokens.test.ts compara app/globals.css com este arquivo: se divergirem, o catálogo está desatualizado e precisa de /design-sync. Atualize este snapshot NO MESMO commit em que republicar.",
   "_publicadoEm": "2026-07-26",
+  "_ultimoSync": "2026-07-26 — 4 cards novos (iconografia Lucide, estados de assinatura, estados de orçamento, documentos impressos) + readme.md e SKILL.md corrigidos: o guia afirmava que não havia biblioteca de ícones.",
   "claro": {
     "bg": "#f6f8fb",
     "surface": "#ffffff",
