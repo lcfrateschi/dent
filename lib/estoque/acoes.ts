@@ -15,6 +15,12 @@ import {
   registrarEntradaComAtor,
   salvarMaterialComAtor,
 } from './movimentar'
+import {
+  type ItemDaFicha,
+  type ResultadoFicha,
+  alternarMaterialComAtor,
+  salvarFichaTecnicaComAtor,
+} from './cadastro'
 
 /**
  * Ações do estoque. Camada fina: **autoriza e delega**.
@@ -73,6 +79,30 @@ export async function definirMinimo(
 ): Promise<ResultadoEstoque> {
   const ator = await exigirPermissao('estoque', 'editar')
   const r = await definirMinimoComAtor(ator, materialId, quantidadeMinima)
+  if (r.ok) revalidatePath('/estoque')
+  return r
+}
+
+/**
+ * Ficha técnica de um procedimento.
+ *
+ * A permissão é `estoque: excluir` — a mesma do cadastro de material, e por isso
+ * só do admin. Ficha técnica errada gera baixa errada em todo atendimento
+ * daquele procedimento, e o erro se multiplica calado.
+ */
+export async function salvarFichaTecnica(
+  procedimentoId: string,
+  itens: readonly ItemDaFicha[],
+): Promise<ResultadoFicha> {
+  const ator = await exigirPermissao('estoque', 'excluir')
+  const r = await salvarFichaTecnicaComAtor(ator, procedimentoId, itens)
+  if (r.ok) revalidatePath('/estoque/fichas')
+  return r
+}
+
+export async function alternarMaterial(materialId: string, ativo: boolean): Promise<ResultadoFicha> {
+  const ator = await exigirPermissao('estoque', 'excluir')
+  const r = await alternarMaterialComAtor(ator, materialId, ativo)
   if (r.ok) revalidatePath('/estoque')
   return r
 }

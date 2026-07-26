@@ -80,6 +80,13 @@ export const usuario = pgTable(
      */
     mfaSecret: text('mfa_secret'),
     mfaAtivo: boolean('mfa_ativo').notNull().default(false),
+    /**
+     * Senha ditada pelo admin no cadastro, que precisa ser trocada no primeiro
+     * acesso. Senha que passou por terceiro é senha comprometida; sem esta marca
+     * ela viraria definitiva em silêncio. O middleware prende quem a tem em
+     * `/trocar-senha`, como já faz com quem não configurou MFA.
+     */
+    senhaTemporaria: boolean('senha_temporaria').notNull().default(false),
     ativo: boolean('ativo').notNull().default(true),
     ultimoLoginEm: timestamp('ultimo_login_em', { withTimezone: true }),
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),

@@ -24,6 +24,7 @@ import {
   Plus,
   ScrollText,
   Search,
+  Settings,
   ShieldCheck,
   Stethoscope,
   TriangleAlert,
@@ -69,6 +70,7 @@ export const ICONES = {
   whatsapp: MessageCircle,
   documentos: ImagemIcone,
   estoque: Package,
+  ajustes: Settings,
 
   // Ações
   novo: Plus,

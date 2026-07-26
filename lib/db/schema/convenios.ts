@@ -93,6 +93,11 @@ export const pacienteConvenio = pgTable(
   },
   (t) => [
     uniqueIndex('paciente_convenio_carteirinha_uk').on(t.convenioId, t.numeroCarteirinha),
+    // Uma carteirinha ATIVA por paciente e operadora: duas tornariam indefinido
+    // qual número vai na guia. Ver drizzle/0020.
+    uniqueIndex('paciente_convenio_uma_ativa_uk')
+      .on(t.pacienteId, t.convenioId)
+      .where(sql`${t.ativo}`),
     index('paciente_convenio_paciente_idx').on(t.pacienteId),
     check('paciente_convenio_titular_nomeado', sql`${t.ehTitular} or ${t.nomeTitular} is not null`),
   ],

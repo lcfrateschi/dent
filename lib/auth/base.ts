@@ -14,8 +14,8 @@ import type { NextAuthConfig } from 'next-auth'
  *   - `config.ts`: adiciona o provider Credentials, que consulta o banco e
  *     verifica senha e TOTP. Roda em Node.
  *
- * Os callbacks ficam aqui porque o middleware precisa ler `perfil` e
- * `mfaAtivo` do token para decidir o redirecionamento.
+ * Os callbacks ficam aqui porque o middleware precisa ler `perfil`, `mfaAtivo` e
+ * `senhaTemporaria` do token para decidir o redirecionamento.
  */
 
 declare module 'next-auth' {
@@ -27,6 +27,8 @@ declare module 'next-auth' {
       perfil: Perfil
       profissionalId: string | null
       mfaAtivo: boolean
+      /** Senha ditada pelo admin no cadastro: tem de ser trocada antes de usar o sistema. */
+      senhaTemporaria: boolean
     }
   }
 
@@ -34,6 +36,7 @@ declare module 'next-auth' {
     perfil: Perfil
     profissionalId: string | null
     mfaAtivo: boolean
+    senhaTemporaria: boolean
   }
 }
 
@@ -44,6 +47,7 @@ declare module '@auth/core/jwt' {
     perfil: Perfil
     profissionalId: string | null
     mfaAtivo: boolean
+    senhaTemporaria: boolean
   }
 }
 
@@ -66,11 +70,15 @@ export const configBase = {
         token.perfil = user.perfil
         token.profissionalId = user.profissionalId
         token.mfaAtivo = user.mfaAtivo
+        token.senhaTemporaria = user.senhaTemporaria
       }
-      // Depois de configurar o MFA, o token é atualizado sem novo login.
+      // Depois de configurar o MFA ou de trocar a senha, o token é atualizado
+      // sem novo login — senão a pessoa ficaria presa na própria tela que
+      // acabou de concluir.
       if (trigger === 'update' && session && typeof session === 'object') {
-        const s = session as { mfaAtivo?: boolean }
+        const s = session as { mfaAtivo?: boolean; senhaTemporaria?: boolean }
         if (typeof s.mfaAtivo === 'boolean') token.mfaAtivo = s.mfaAtivo
+        if (typeof s.senhaTemporaria === 'boolean') token.senhaTemporaria = s.senhaTemporaria
       }
       return token
     },
@@ -79,6 +87,7 @@ export const configBase = {
       session.user.perfil = token.perfil
       session.user.profissionalId = token.profissionalId
       session.user.mfaAtivo = token.mfaAtivo
+      session.user.senhaTemporaria = token.senhaTemporaria === true
       return session
     },
   },

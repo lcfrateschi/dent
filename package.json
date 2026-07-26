@@ -20,6 +20,7 @@
     "convenio:demo": "tsx lib/tiss/demonstrar.ts",
     "estoque:demo": "tsx lib/estoque/demonstrar.ts",
     "estoque:telas": "tsx lib/estoque/verificar-telas.ts",
+    "admin:verificar": "tsx lib/admin/verificar-telas.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

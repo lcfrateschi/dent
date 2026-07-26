@@ -124,22 +124,26 @@ async function main(): Promise<void> {
   const marca = `[DEMO ${new Date().toISOString().slice(11, 19)}]`
   console.log(`\n═══ Fase 9 ponta a ponta ${marca} ═══`)
 
-  const [dentista] = await db
-    .insert(usuario)
-    .values({
-      // Marca no FIM do nome: `primeiroNome` usa o primeiro token, e um prefixo
-      // faria o lembrete cumprimentar "Olá, [DEMO".
-      nome: `Dra. Demo ${marca}`,
-      email: `demo-${Date.now()}@demo.local`,
-      senhaHash: 'x',
-      perfil: 'dentista',
-    })
-    .returning({ id: usuario.id })
-
-  const [prof] = await db
-    .insert(profissional)
-    .values({ usuarioId: dentista!.id, cro: `D${Date.now() % 100000}`, ufCro: 'SP' })
-    .returning({ id: profissional.id })
+  // As duas linhas na MESMA transação: a trava deferida de `drizzle/0021` cobra
+  // no commit que dentista ativo tenha cadastro de profissional.
+  const { dentista, prof } = await db.transaction(async (tx) => {
+    const [novoUsuario] = await tx
+      .insert(usuario)
+      .values({
+        // Marca no FIM do nome: `primeiroNome` usa o primeiro token, e um prefixo
+        // faria o lembrete cumprimentar "Olá, [DEMO".
+        nome: `Dra. Demo ${marca}`,
+        email: `demo-${Date.now()}@demo.local`,
+        senhaHash: 'x',
+        perfil: 'dentista',
+      })
+      .returning({ id: usuario.id })
+    const [novoProf] = await tx
+      .insert(profissional)
+      .values({ usuarioId: novoUsuario!.id, cro: `D${Date.now() % 100000}`, ufCro: 'SP' })
+      .returning({ id: profissional.id })
+    return { dentista: novoUsuario, prof: novoProf }
+  })
 
   const [cad] = await db
     .insert(cadeira)

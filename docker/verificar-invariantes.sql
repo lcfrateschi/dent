@@ -1493,6 +1493,225 @@ SELECT espera_erro('estoque: custo de lote negativo', ARRAY[$$
   VALUES ('aaaa1400-0000-4000-8000-000000000001', '-1.00', '2026-01-10')
 $$]);
 
+-- ── 15. Administração: cadastros com tela ───────────────────────────────────
+--
+-- Cadastro que ganhou tela ganhou também a chance de trancar a clínica fora do
+-- sistema e de reescrever preço já faturado. As travas de drizzle/0021.
+-- ────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF to_regprocedure('usuario_exige_admin_ativo()') IS NULL
+     OR to_regprocedure('preco_convenio_so_fecha()') IS NULL THEN
+    RAISE EXCEPTION 'travas da administração não existem — rode a migration 0021';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'usuario' AND column_name = 'senha_temporaria') THEN
+    RAISE EXCEPTION 'coluna usuario.senha_temporaria não existe — falta a migration 0020';
+  END IF;
+END $$;
+
+SET CONSTRAINTS ALL DEFERRED;
+
+-- Dois admins, para poder provar os dois lados da regra.
+INSERT INTO usuario (id, nome, email, senha_hash, perfil) VALUES
+  ('a0000000-0000-4000-8000-000000000001', 'Admin Um',  'admin1@teste.local', 'x', 'admin'),
+  ('a0000000-0000-4000-8000-000000000002', 'Admin Dois','admin2@teste.local', 'x', 'admin');
+
+-- O seed cria `admin@local`. Sem desativá-lo, "último admin ativo" nunca é
+-- alcançado e os três casos abaixo passariam por não exercitar a regra —
+-- exatamente o tipo de verde que não prova nada. Fica FORA de espera_erro para
+-- não ser desfeito pelo rollback do caso.
+UPDATE usuario SET ativo = false
+ WHERE perfil = 'admin'
+   AND id NOT IN ('a0000000-0000-4000-8000-000000000001',
+                  'a0000000-0000-4000-8000-000000000002');
+
+SELECT espera_ok('admin: desativar um admin havendo outro ativo', ARRAY[$$
+  UPDATE usuario SET ativo = false WHERE id = 'a0000000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_erro('admin: desativar o ÚLTIMO admin ativo', ARRAY[$$
+  UPDATE usuario SET ativo = false WHERE id = 'a0000000-0000-4000-8000-000000000001'
+$$]);
+
+SELECT espera_erro('admin: rebaixar o ÚLTIMO admin ativo', ARRAY[$$
+  UPDATE usuario SET perfil = 'recepcao' WHERE id = 'a0000000-0000-4000-8000-000000000001'
+$$]);
+
+SELECT espera_erro('admin: apagar o ÚLTIMO admin ativo', ARRAY[$$
+  DELETE FROM usuario WHERE id = 'a0000000-0000-4000-8000-000000000001'
+$$]);
+
+-- Admin inativo não é reserva: reativar o segundo é o que libera desativar o primeiro.
+SELECT espera_ok('admin: reativar o segundo libera desativar o primeiro', ARRAY[$$
+  UPDATE usuario SET ativo = true WHERE id = 'a0000000-0000-4000-8000-000000000002'
+$$, $$
+  UPDATE usuario SET ativo = false WHERE id = 'a0000000-0000-4000-8000-000000000001'
+$$, $$
+  UPDATE usuario SET ativo = true WHERE id = 'a0000000-0000-4000-8000-000000000001'
+$$]);
+
+-- ── Dentista exige profissional ────────────────────────────────────────────
+SELECT espera_erro('usuário: perfil dentista ATIVO sem cadastro de profissional', ARRAY[$$
+  INSERT INTO usuario (id, nome, email, senha_hash, perfil)
+  VALUES ('a0000000-0000-4000-8000-000000000003', 'Dr. Sem CRO',
+          'semcro@teste.local', 'x', 'dentista')
+$$], true);
+
+SELECT espera_ok('usuário: dentista COM profissional na mesma transação', ARRAY[$$
+  INSERT INTO usuario (id, nome, email, senha_hash, perfil)
+  VALUES ('a0000000-0000-4000-8000-000000000004', 'Dra. Com CRO',
+          'comcro@teste.local', 'x', 'dentista')
+$$, $$
+  INSERT INTO profissional (usuario_id, cro, uf_cro)
+  VALUES ('a0000000-0000-4000-8000-000000000004', 'T9001', 'SP')
+$$], true);
+
+SELECT espera_ok('usuário: dentista INATIVO não precisa de profissional (desligamento)', ARRAY[$$
+  INSERT INTO usuario (id, nome, email, senha_hash, perfil, ativo)
+  VALUES ('a0000000-0000-4000-8000-000000000005', 'Dr. Desligado',
+          'desligado@teste.local', 'x', 'dentista', false)
+$$], true);
+
+-- ── Tabela negociada ───────────────────────────────────────────────────────
+INSERT INTO preco_convenio (id, convenio_id, procedimento_id, valor, vigencia_inicio)
+VALUES ('b0000000-0000-4000-8000-000000000001',
+        'cccc0000-0000-4000-8000-000000000001',
+        (SELECT id FROM procedimento WHERE codigo = 'DENT-001'),
+        '100.00', '2025-01-01');
+
+SELECT espera_erro('convênio: duas vigências ABERTAS para o mesmo procedimento', ARRAY[$$
+  INSERT INTO preco_convenio (convenio_id, procedimento_id, valor, vigencia_inicio)
+  VALUES ('cccc0000-0000-4000-8000-000000000001',
+          (SELECT id FROM procedimento WHERE codigo = 'DENT-001'),
+          '120.00', '2026-01-01')
+$$]);
+
+SELECT espera_erro('convênio: vigência nova sobrepondo período fechado', ARRAY[$$
+  UPDATE preco_convenio SET vigencia_fim = '2025-12-31'
+   WHERE id = 'b0000000-0000-4000-8000-000000000001'
+$$, $$
+  INSERT INTO preco_convenio (convenio_id, procedimento_id, valor, vigencia_inicio, vigencia_fim)
+  VALUES ('cccc0000-0000-4000-8000-000000000001',
+          (SELECT id FROM procedimento WHERE codigo = 'DENT-001'),
+          '120.00', '2025-06-01', '2025-08-31')
+$$]);
+
+SELECT espera_ok('convênio: fechar a vigência e abrir a seguinte no dia seguinte', ARRAY[$$
+  UPDATE preco_convenio SET vigencia_fim = '2025-12-31'
+   WHERE id = 'b0000000-0000-4000-8000-000000000001'
+$$, $$
+  INSERT INTO preco_convenio (id, convenio_id, procedimento_id, valor, vigencia_inicio)
+  VALUES ('b0000000-0000-4000-8000-000000000002',
+          'cccc0000-0000-4000-8000-000000000001',
+          (SELECT id FROM procedimento WHERE codigo = 'DENT-001'),
+          '120.00', '2026-01-01')
+$$]);
+
+SELECT espera_erro('convênio: alterar o VALOR de um preço', ARRAY[$$
+  UPDATE preco_convenio SET valor = '999.00'
+   WHERE id = 'b0000000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_erro('convênio: alterar a cobertura de um preço', ARRAY[$$
+  UPDATE preco_convenio SET cobertura_pct = '50'
+   WHERE id = 'b0000000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_erro('convênio: mover o início da vigência', ARRAY[$$
+  UPDATE preco_convenio SET vigencia_inicio = '2025-06-01'
+   WHERE id = 'b0000000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_ok('convênio: FECHAR a vigência é a única edição permitida', ARRAY[$$
+  UPDATE preco_convenio SET vigencia_fim = '2026-12-31'
+   WHERE id = 'b0000000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_ok('convênio: apagar preço que nunca foi faturado', ARRAY[$$
+  INSERT INTO preco_convenio (id, convenio_id, procedimento_id, valor, vigencia_inicio)
+  VALUES ('b0000000-0000-4000-8000-000000000003',
+          'cccc0000-0000-4000-8000-000000000001',
+          (SELECT id FROM procedimento WHERE codigo = 'DENT-002'),
+          '80.00', '2030-01-01')
+$$, $$
+  DELETE FROM preco_convenio WHERE id = 'b0000000-0000-4000-8000-000000000003'
+$$]);
+
+-- Guia com um item executado DENTRO da vigência de 2025, para provar que
+-- preço já faturado não se apaga. Criada fora de espera_erro: dentro, o
+-- rollback levaria a guia e o caso passaria pelo motivo errado.
+INSERT INTO guia_tiss (id, convenio_id, paciente_id, numero_carteirinha,
+                       profissional_id, valor_apresentado, situacao)
+VALUES ('c0000000-0000-4000-8000-000000000001',
+        'cccc0000-0000-4000-8000-000000000001',
+        '33333333-3333-3333-3333-333333333335', 'CART-001',
+        '22222222-2222-2222-2222-222222222221', '100.00', 'rascunho');
+
+-- O item de plano tem de ser do MESMO procedimento do preço (DENT-001): os itens
+-- da seção do TISS usam `procedimento LIMIT 1`, que é arbitrário, e com outro
+-- procedimento o gatilho não encontraria faturamento — o caso passaria por não
+-- exercitar a regra.
+INSERT INTO item_plano (id, plano_id, procedimento_id, cobertura, convenio_id, valor, status)
+VALUES ('e1000000-0000-4000-8000-000000000001',
+        'dddd0000-0000-4000-8000-000000000001',
+        (SELECT id FROM procedimento WHERE codigo = 'DENT-001'),
+        'convenio', 'cccc0000-0000-4000-8000-000000000001', '100.00', 'executado');
+
+INSERT INTO item_guia (guia_id, item_plano_id, descricao, data_execucao, valor_apresentado)
+VALUES ('c0000000-0000-4000-8000-000000000001',
+        'e1000000-0000-4000-8000-000000000001',
+        'Restauração', '2025-07-15', '100.00');
+
+SELECT espera_erro('convênio: apagar preço JÁ FATURADO (é o histórico do apresentado)', ARRAY[$$
+  DELETE FROM preco_convenio WHERE id = 'b0000000-0000-4000-8000-000000000001'
+$$]);
+
+-- ── Carteirinha ────────────────────────────────────────────────────────────
+SELECT espera_erro('carteirinha: duas ATIVAS do mesmo paciente na mesma operadora', ARRAY[$$
+  INSERT INTO paciente_convenio (paciente_id, convenio_id, numero_carteirinha)
+  VALUES ('33333333-3333-3333-3333-333333333335',
+          'cccc0000-0000-4000-8000-000000000001', 'CART-999')
+$$]);
+
+SELECT espera_ok('carteirinha: nova ativa depois de inativar a anterior', ARRAY[$$
+  UPDATE paciente_convenio SET ativo = false
+   WHERE id = 'cccc0000-0000-4000-8000-000000000002'
+$$, $$
+  INSERT INTO paciente_convenio (paciente_id, convenio_id, numero_carteirinha)
+  VALUES ('33333333-3333-3333-3333-333333333335',
+          'cccc0000-0000-4000-8000-000000000001', 'CART-998')
+$$]);
+
+-- ── Cadeira ────────────────────────────────────────────────────────────────
+-- O agendamento entra FORA do caso. Criá-lo dentro escondeu um bug real: a
+-- trigger comparava com o status 'falta', que não existe no enum ('faltou'), e o
+-- 22P02 fazia o espera_erro "passar" sem nunca chegar à regra da cadeira.
+INSERT INTO agendamento (id, paciente_id, profissional_id, cadeira_id, inicio, fim)
+VALUES ('a5000000-0000-4000-8000-000000000001',
+        '33333333-3333-3333-3333-333333333333',
+        '22222222-2222-2222-2222-222222222222',
+        '44444444-4444-4444-4444-444444444442',
+        now() + interval '3 days', now() + interval '3 days 1 hour');
+
+SELECT espera_erro('cadeira: desativar com agendamento futuro', ARRAY[$$
+  UPDATE cadeira SET ativo = false WHERE id = '44444444-4444-4444-4444-444444444442'
+$$]);
+
+SELECT espera_ok('cadeira: agendamento CANCELADO não impede desativar', ARRAY[$$
+  UPDATE agendamento SET status = 'cancelado', motivo_cancelamento = 'teste'
+   WHERE id = 'a5000000-0000-4000-8000-000000000001'
+$$, $$
+  UPDATE cadeira SET ativo = false WHERE id = '44444444-4444-4444-4444-444444444442'
+$$]);
+
+SELECT espera_ok('cadeira: desativar cadeira livre', ARRAY[$$
+  INSERT INTO cadeira (id, nome) VALUES
+    ('44444444-4444-4444-4444-444444444443', 'Cadeira Livre Teste')
+$$, $$
+  UPDATE cadeira SET ativo = false WHERE id = '44444444-4444-4444-4444-444444444443'
+$$]);
+
 -- ── Relatório ───────────────────────────────────────────────────────────────
 \echo ''
 \echo '════════════════════════════════════════════════════════════════════════'

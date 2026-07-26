@@ -100,7 +100,7 @@ Ele desconhece as EXCLUDE constraints e os triggers de `drizzle/0001_constraints
 derrubá-los silenciosamente — junto com o append-only do prontuário. O script foi removido do
 `package.json` de propósito. Use `db:generate` + `db:migrate`.
 
-Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 178 casos que provam
+Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 200 casos que provam
 as invariantes contra um Postgres real. O script **falha na hora** se uma tabela esperada não
 existir — um `espera_erro` com a tabela ausente "passa" pelo motivo errado, e isso já produziu
 um relatório verde provando invariante nenhuma.
@@ -198,6 +198,21 @@ um relatório verde provando invariante nenhuma.
 - **Remoção de documento é de mão única.** Corrigir envio errado é remover com
   motivo e enviar de novo. Esconder e reexibir um documento clínico sem rastro é
   o que a guarda de 20 anos existe para impedir. Trigger em `drizzle/0011`.
+- **A clínica não pode ficar sem administrador.** Desativar ou rebaixar o último admin ativo
+  trancaria todos fora do sistema, e a saída passaria a ser `UPDATE` no banco. Trigger em
+  `drizzle/0021`. Ninguém desativa a si mesmo, pelo mesmo motivo.
+- **Senha criada pelo admin é TEMPORÁRIA.** Senha que passou por telefone é senha comprometida:
+  `usuario.senha_temporaria` prende a pessoa em `/trocar-senha`. A ordem é **MFA primeiro, senha
+  depois** — trocar já protegido por segundo fator é melhor que trocar com a credencial que
+  circulou.
+- **Reset de MFA apaga o segredo, nunca o mostra.** Admin que vê `mfa_secret` gera códigos
+  válidos em nome do outro. Nenhuma consulta de `lib/admin/` seleciona essa coluna.
+- **Preço de convênio NÃO se corrige por cima.** Só `vigencia_fim` muda; reajuste é linha nova e a
+  anterior fecha no dia anterior, automaticamente. EXCLUDE constraint impede dois preços válidos no
+  mesmo dia — com dois, o valor faturado dependeria da ordem da consulta. Preço já usado em guia
+  não se apaga: é o histórico do que foi apresentado.
+- **Uma carteirinha ATIVA por paciente e operadora.** Duas tornariam indefinido qual número vai na
+  guia.
 - **CID no atestado só com autorização expressa do paciente.** O atestado costuma
   ir para o RH da empresa; o diagnóstico é dado de saúde. O padrão é não imprimir,
   e a tela avisa que não imprimiu. Ver `lib/domain/impressos.ts`.
@@ -245,7 +260,12 @@ npm run build         # next build (força NODE_ENV=production — ver abaixo)
 Demonstrações que rodam contra o Postgres e conferem número, não fluxo:
 `whatsapp:demo`, `documentos:demo`, `relatorios:demo`, `convenio:demo`,
 `estoque:demo`. Verificações por HTTP com sessão real: `portal:seguranca`,
-`estoque:telas`.
+`estoque:telas`, `admin:verificar`.
+
+**Fixture de dentista precisa de transação.** A trava deferida de `drizzle/0021` cobra no commit
+que usuário de perfil `dentista` ativo tenha linha em `profissional`. Dois inserts soltos comitam
+separado e o primeiro já viola — todo script de demonstração cria os dois dentro de
+`db.transaction`, como `criarUsuarioComAtor` faz.
 
 ## Armadilhas do domínio (já custaram retrabalho em outros sistemas)
 

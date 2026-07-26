@@ -72,20 +72,25 @@ async function main(): Promise<void> {
   const t = Date.now()
   const hoje = await hojeDaClinica()
 
-  const [u] = await db
-    .insert(usuario)
-    .values({
-      nome: `${MARCA} Dra. Rita`,
-      email: `est-${t}@local`,
-      senhaHash: await gerarHashSenha('x'.repeat(20)),
-      perfil: 'dentista',
-    })
-    .returning({ id: usuario.id })
-
-  const [prof] = await db
-    .insert(profissional)
-    .values({ usuarioId: u!.id, cro: `E${t % 100000}`, ufCro: 'SP' })
-    .returning({ id: profissional.id })
+  // Usuário e profissional na MESMA transação: a trava deferida de
+  // `drizzle/0021` cobra no commit que dentista ativo tenha cadastro de
+  // profissional, e dois inserts soltos comitam separado.
+  const { u, prof } = await db.transaction(async (tx) => {
+    const [novoUsuario] = await tx
+      .insert(usuario)
+      .values({
+        nome: `${MARCA} Dra. Rita`,
+        email: `est-${t}@local`,
+        senhaHash: await gerarHashSenha('x'.repeat(20)),
+        perfil: 'dentista',
+      })
+      .returning({ id: usuario.id })
+    const [novoProf] = await tx
+      .insert(profissional)
+      .values({ usuarioId: novoUsuario!.id, cro: `E${t % 100000}`, ufCro: 'SP' })
+      .returning({ id: profissional.id })
+    return { u: novoUsuario, prof: novoProf }
+  })
 
   const ator: Ator = {
     usuarioId: u!.id,

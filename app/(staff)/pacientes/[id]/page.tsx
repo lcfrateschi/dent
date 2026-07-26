@@ -2,8 +2,10 @@ import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Icone } from '@/components/ui/Icone'
 import { AcessoAoPortal } from '@/components/paciente/AcessoAoPortal'
+import { Carteirinhas } from '@/components/paciente/Carteirinhas'
 import { ConsentimentoWhatsapp } from '@/components/paciente/ConsentimentoWhatsapp'
 import { FaixaAlertas } from '@/components/paciente/FaixaAlertas'
+import { carteirinhasDoPaciente, conveniosAtivos } from '@/lib/convenios/consultas'
 import { pode } from '@/lib/authz/politicas'
 import { exigirPermissaoPagina } from '@/lib/authz/sessao'
 import { formatarCep, formatarCpf, formatarTelefone } from '@/lib/domain/cpf'
@@ -31,12 +33,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const p = await acharPaciente(ator, id)
   if (!p) notFound()
 
-  const [alertas, responsavel, autorizadoWhatsapp, acessoPortal] = await Promise.all([
+  const [alertas, responsavel, autorizadoWhatsapp, acessoPortal, carteirinhas, operadoras] =
+    await Promise.all([
     // Recepção também vê alertas: é segurança do paciente na cadeira.
     pode(ator.perfil, 'alerta_clinico', 'ler') ? alertasDoPaciente(id) : Promise.resolve([]),
     p.responsavelLegalId ? acharPacienteResumo(p.responsavelLegalId) : Promise.resolve(null),
     temConsentimentoWhatsapp(id),
     situacaoDoAcesso(id),
+    carteirinhasDoPaciente(id),
+    conveniosAtivos(),
   ])
 
   const hoje = new Date().toISOString().slice(0, 10)
@@ -173,6 +178,32 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           </CardBody>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader
+          titulo="Convênios"
+          descricao="A carteirinha é o que permite faturar por convênio. Sem ela, o atendimento é particular."
+        />
+        <CardBody>
+          <Carteirinhas
+            pacienteId={p.id}
+            carteirinhas={carteirinhas.map((c) => ({
+              id: c.id,
+              convenioId: c.convenioId,
+              convenioNome: c.convenioNome,
+              numeroCarteirinha: c.numeroCarteirinha,
+              plano: c.plano,
+              ehTitular: c.ehTitular,
+              nomeTitular: c.nomeTitular,
+              adesaoEm: c.adesaoEm,
+              validade: c.validade,
+              ativo: c.ativo,
+            }))}
+            convenios={operadoras.map((o) => ({ id: o.id, nome: o.nome }))}
+            podeEditar={pode(ator.perfil, 'paciente', 'editar')}
+          />
+        </CardBody>
+      </Card>
 
       <Card>
         <CardHeader

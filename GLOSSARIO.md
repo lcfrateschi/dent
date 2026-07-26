@@ -167,6 +167,17 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **Rastreabilidade de lote** | Responder "em quais pacientes este lote foi usado" quando o fabricante recolhe um lote. É o motivo de `movimento_estoque.execucao_id` existir. |
 | **Material controlado** | Sujeito à Portaria 344/98 da Anvisa. Toda saída exige profissional responsável e motivo — cobrado por trigger, não por disciplina de tela. |
 
+## Administração (Bloco 1)
+
+| Termo | Definição |
+|---|---|
+| **Senha temporária** | Senha gerada pelo sistema e entregue pelo admin. Aparece **uma vez** (o banco guarda o hash) e tem de ser trocada no primeiro acesso: senha que passou por terceiro é senha comprometida. |
+| **Reset de MFA** | Apagar o segredo do autenticador para a pessoa reconfigurar — o caminho de quem trocou de celular. O admin **nunca vê** o segredo. |
+| **Último administrador** | Não se desativa nem se rebaixa. Sem admin ativo, a clínica fica trancada fora do próprio sistema e a saída é mexer no banco. |
+| **Vigência de preço** | Período em que um valor negociado vale. Reajuste é vigência **nova**, e a anterior fecha no dia anterior — dois preços válidos no mesmo dia tornariam indefinido o valor a faturar. |
+| **Carteirinha** | Vínculo do paciente com uma operadora (`paciente_convenio`). Uma ativa por operadora. A **data de adesão** é a base da contagem de carência. |
+| **Pendência de configuração** | O que falta para um documento sair correto: sem CNPJ o orçamento sai sem cabeçalho fiscal, sem CRO o atestado não tem valor legal. A tela de ajustes abre por essa lista. |
+
 ## LGPD
 
 | Termo | Definição |

@@ -1,0 +1,2 @@
+ALTER TABLE "usuario" ADD COLUMN "senha_temporaria" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "paciente_convenio_uma_ativa_uk" ON "paciente_convenio" USING btree ("paciente_id","convenio_id") WHERE "paciente_convenio"."ativo";

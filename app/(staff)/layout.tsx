@@ -48,7 +48,8 @@ const MENU: readonly ItemMenu[] = [
   { href: '/auditoria', rotulo: 'Auditoria', recursos: ['auditoria'], icone: 'auditoria' },
   { href: '/convenios', rotulo: 'Convênios', recursos: ['convenio'], icone: 'convenios' },
   { href: '/estoque', rotulo: 'Estoque', recursos: ['estoque'], icone: 'estoque' },
-  { href: '/usuarios', rotulo: 'Usuários', recursos: ['usuario'], icone: 'usuarios', fase: 3 },
+  { href: '/usuarios', rotulo: 'Usuários', recursos: ['usuario'], icone: 'usuarios' },
+  { href: '/configuracoes', rotulo: 'Ajustes', recursos: ['configuracao'], icone: 'ajustes' },
 ]
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {

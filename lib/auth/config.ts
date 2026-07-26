@@ -56,6 +56,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             perfil: usuario.perfil,
             mfaAtivo: usuario.mfaAtivo,
             mfaSecret: usuario.mfaSecret,
+            senhaTemporaria: usuario.senhaTemporaria,
             ativo: usuario.ativo,
             profissionalId: profissional.id,
           })
@@ -92,6 +93,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           perfil: linha.perfil,
           profissionalId: linha.profissionalId,
           mfaAtivo: linha.mfaAtivo,
+          senhaTemporaria: linha.senhaTemporaria,
         }
       },
     }),

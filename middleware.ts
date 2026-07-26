@@ -16,9 +16,10 @@ const { auth } = NextAuth(configBase)
  *    sessão nenhuma. Middleware não é o lugar de autorização de recurso: ele não
  *    conhece o objeto sendo acessado.
  *
- * 2. **MFA não configurado fica preso em /configurar-mfa.** Sem isto, um usuário
- *    novo navegaria pelo sistema inteiro sem segundo fator, e a exigência de MFA
- *    seria decorativa.
+ * 2. **MFA não configurado fica preso em /configurar-mfa**, e senha temporária
+ *    fica presa em /trocar-senha. Sem a primeira, um usuário novo navegaria pelo
+ *    sistema inteiro sem segundo fator e a exigência de MFA seria decorativa.
+ *    Sem a segunda, a senha que o admin ditou por telefone viraria definitiva.
  *
  * 3. **Os realms não se cruzam.** Rota do portal (`/meu/...`) nunca é liberada por
  *    sessão de staff, e rota de staff nunca é liberada por cookie do portal.
@@ -60,6 +61,7 @@ export default auth((req) => {
   const { pathname } = req.nextUrl
   const logadoStaff = !!req.auth?.user
   const mfaAtivo = req.auth?.user?.mfaAtivo === true
+  const senhaTemporaria = req.auth?.user?.senhaTemporaria === true
   const temCookiePortal = req.cookies.has(COOKIE_PORTAL)
 
   // ── Portal do paciente ───────────────────────────────────────────────────
@@ -104,6 +106,17 @@ export default auth((req) => {
 
   if (!mfaAtivo && pathname !== '/configurar-mfa') {
     return NextResponse.redirect(new URL('/configurar-mfa', req.url))
+  }
+
+  /**
+   * Senha ditada pelo admin tem de ser trocada antes de qualquer outra coisa.
+   *
+   * A ordem importa: **MFA primeiro, senha depois**. Trocar a senha protegido
+   * por segundo fator é melhor do que trocá-la com só a senha temporária — que é
+   * justamente a credencial que passou pelo telefone de outra pessoa.
+   */
+  if (senhaTemporaria && pathname !== '/trocar-senha' && pathname !== '/configurar-mfa') {
+    return NextResponse.redirect(new URL('/trocar-senha', req.url))
   }
 
   return NextResponse.next()

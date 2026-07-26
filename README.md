@@ -59,7 +59,7 @@ npm run docker:up        # sobe tudo
 npm run docker:logs      # segue o log do app
 npm run docker:down      # para
 npm run docker:reset     # apaga o volume e recria o banco do zero
-npm run db:verificar     # prova as invariantes do banco (178 casos)
+npm run db:verificar     # prova as invariantes do banco (200 casos)
 ```
 
 Variante de produção (imagem enxuta, `output: standalone`, roda sem root):
@@ -242,6 +242,69 @@ Decisões que valem saber:
   clínica, com exportação auditada.
 - **"Não vou poder ir" não cancela**: registra o aviso para a recepção remarcar. Um
   toque errado no celular não pode custar o horário do paciente.
+
+## Cadastros administrativos
+
+A clínica cadastra o que precisa **pela tela**, sem SQL e sem depender de quem
+escreveu o código:
+
+| Tela | O que resolve |
+|---|---|
+| `/usuarios` | Quem entra, com que perfil, CRO e comissão. Senha temporária, reset de MFA, desativação |
+| `/configuracoes` | Identificação (sai nos impressos e no XML), horário de funcionamento, cadeiras |
+| `/convenios/cadastro` | Operadoras, prazo de repasse e **tabela negociada com vigência** |
+| Ficha do paciente | Carteirinha de convênio, com data de adesão (é a base da carência) |
+| `/estoque/fichas` | Cadastro de material e ficha técnica de cada procedimento |
+
+```bash
+# núcleo + telas por HTTP, com sessão real (44 conferências)
+docker compose exec app npm run admin:verificar
+```
+
+### O primeiro acesso de um funcionário
+
+O admin cadastra e o sistema **gera** a senha — não deixa o admin escolher, senão
+"Clinica@2026" acaba servindo para todo mundo. A senha aparece uma vez só (o banco
+guarda o hash) e nasce marcada como temporária.
+
+Aí a pessoa passa por duas portas, nesta ordem: **configura o autenticador** e
+**troca a senha**. A ordem é deliberada — trocar a senha já protegido por segundo
+fator é melhor do que trocá-la tendo apenas a credencial que circulou por
+telefone. A troca exige a senha atual: sem isso, uma sessão esquecida no balcão
+toma a conta.
+
+### As travas que impedem a clínica de se trancar fora
+
+- **Nunca zero administradores ativos.** Desativar ou rebaixar o último admin
+  deixaria a saída só pelo banco. Ninguém desativa a si mesmo, pelo mesmo motivo:
+  quem se desativa perde a sessão no clique seguinte.
+- **Dentista sem CRO é recusado.** Ele entraria, veria o prontuário e não
+  conseguiria assinar nada — falha que aparece na frente do paciente.
+- **Cadeira com agendamento futuro não desativa.** O horário existe e o paciente
+  foi avisado; remarcar é decisão da recepção.
+- **Ninguém é apagado.** Usuário assina evolução e aparece na trilha de auditoria,
+  com guarda de 20 anos. Desativar impede o login e preserva o histórico.
+
+### Tabela negociada: reajuste não é edição
+
+O valor faturado é o da **data da execução**. Editar uma linha existente
+reescreveria o que já foi apresentado à operadora, e a conciliação do repasse
+deixaria de fechar sem que nada indicasse por quê.
+
+Então reajuste é vigência nova, e a anterior **fecha no dia anterior** —
+automaticamente, porque pedir as duas datas à pessoa produz um dia sem preço ou,
+pior, dois preços válidos no mesmo dia (aí o valor a faturar depende da ordem da
+consulta). Uma EXCLUDE constraint garante isso no banco, não na tela. Preço já
+usado em guia não se apaga: é o histórico do que foi apresentado.
+
+### O que a tela de ajustes mostra primeiro
+
+O que **falta**, não o que está preenchido — sem CNPJ o orçamento sai sem
+cabeçalho fiscal, sem CRO o atestado não tem valor legal, sem dentista ninguém
+assina evolução. Dois campos aparecem só para leitura: a base da comissão e o
+fuso horário. Mudar qualquer um reinterpreta dado já gravado (a apuração de meses
+fechados; todo o histórico de agenda e validade de lote), e isso é conversa com a
+clínica e migration — não um clique.
 
 ## Estoque (Fase 14)
 
@@ -460,7 +523,7 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 
 | Fase | Situação |
 |---|---|
-| 1 — Domínio e banco | pronta, verificada em Postgres real (178 invariantes) |
+| 1 — Domínio e banco | pronta, verificada em Postgres real (200 invariantes) |
 | 2 — Design system | tokens, componentes base, odontograma pronto |
 | 3 — Esqueleto, MFA, RBAC, CRUD de paciente | pronta |
 | 4 — Agenda | pronta |
@@ -474,3 +537,4 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 12 — Portal do paciente | pronta, com revisão de segurança (29 verificações adversariais) |
 | 13 — Convênios / TISS | controle interno pronto; TUSS oficial em 36/49; **XML não validado** (ver abaixo) |
 | 14 — Estoque | pronta (FEFO, validade, rastreabilidade de lote) |
+| 15 — Cadastros administrativos | pronta (a clínica opera sem depender de quem escreveu o código) |

@@ -41,6 +41,7 @@ export default async function Page() {
   ])
 
   const podeMovimentar = pode(ator.perfil, 'estoque', 'criar')
+  const podeCadastrar = pode(ator.perfil, 'estoque', 'excluir')
   const vencidos = vencendo.filter((l) => l.avaliacao.situacao === 'vencido')
 
   return (
@@ -53,6 +54,14 @@ export default async function Page() {
           </h1>
           <p className="text-sm text-fg-3">Materiais, lotes, validade e reposição</p>
         </div>
+        {podeCadastrar ? (
+          <Link
+            href="/estoque/fichas"
+            className="rounded-(--radius-controle) border border-border bg-surface px-4 py-2 text-sm text-fg hover:bg-surface-2"
+          >
+            Fichas e materiais
+          </Link>
+        ) : null}
       </div>
 
       {vencidos.length > 0 ? (

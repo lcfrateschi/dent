@@ -68,26 +68,31 @@ async function criarUsuario(
   perfil: 'dentista' | 'financeiro',
 ): Promise<{ ator: Ator; segredo: string }> {
   const segredo = gerarSegredoTotp()
-  const [u] = await db
-    .insert(usuario)
-    .values({
-      nome: `Demo ${perfil}`,
-      email,
-      senhaHash: await gerarHashSenha(SENHA),
-      perfil,
-      mfaSecret: segredo,
-      mfaAtivo: true,
-    })
-    .returning({ id: usuario.id })
+  // As duas linhas na MESMA transação: a trava deferida de `drizzle/0021` cobra
+  // no commit que dentista ativo tenha cadastro de profissional.
+  const { u, profissionalId } = await db.transaction(async (tx) => {
+    const [novoUsuario] = await tx
+      .insert(usuario)
+      .values({
+        nome: `Demo ${perfil}`,
+        email,
+        senhaHash: await gerarHashSenha(SENHA),
+        perfil,
+        mfaSecret: segredo,
+        mfaAtivo: true,
+      })
+      .returning({ id: usuario.id })
 
-  let profissionalId: string | null = null
-  if (perfil === 'dentista') {
-    const [p] = await db
-      .insert(profissional)
-      .values({ usuarioId: u!.id, cro: `X${Date.now() % 100000}`, ufCro: 'SP' })
-      .returning({ id: profissional.id })
-    profissionalId = p!.id
-  }
+    let id: string | null = null
+    if (perfil === 'dentista') {
+      const [p] = await tx
+        .insert(profissional)
+        .values({ usuarioId: novoUsuario!.id, cro: `X${Date.now() % 100000}`, ufCro: 'SP' })
+        .returning({ id: profissional.id })
+      id = p!.id
+    }
+    return { u: novoUsuario, profissionalId: id }
+  })
 
   return {
     ator: { usuarioId: u!.id, nome: `Demo ${perfil}`, email, perfil, profissionalId },
