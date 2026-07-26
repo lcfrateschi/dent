@@ -49,6 +49,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
       NODE_ENV: development
       WATCHPACK_POLLING: 'true'
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-trocar-em-producao-0123456789abcdef}
+      AUTH_TRUST_HOST: 'true'
     ports:
       - '${APP_PORT:-3000}:3000'
     depends_on:
@@ -71,6 +73,12 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
       NODE_ENV: production
+      # Sem `:?` de propósito: o compose interpola TODOS os serviços mesmo os
+      # de outro profile, e um `:?` aqui quebraria `docker compose up` normal.
+      # A exigência real é em runtime, em lib/auth/segredo.ts — o app se recusa
+      # a subir em produção com o segredo de desenvolvimento.
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-trocar-em-producao-0123456789abcdef}
+      AUTH_TRUST_HOST: 'true'
     ports:
       - '${APP_PORT:-3000}:3000'
     depends_on:

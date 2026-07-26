@@ -3,6 +3,7 @@ import { cadeira, clinica } from '@/lib/db/schema'
 import { sql } from 'drizzle-orm'
 import { seedDentes } from './dentes'
 import { seedProcedimentos } from './procedimentos'
+import { seedUsuarioInicial } from './usuarioInicial'
 
 /**
  * Dados de referência. Idempotente — pode rodar quantas vezes quiser.
@@ -43,6 +44,19 @@ async function main(): Promise<void> {
 
   const cadeiras = await seedCadeiras()
   console.log(`  cadeira       → ${cadeiras} cadeiras`)
+
+  const admin = await seedUsuarioInicial(db)
+  if (admin.criado) {
+    console.log('\n' + '─'.repeat(64))
+    console.log('  PRIMEIRO ACESSO (só desenvolvimento)')
+    console.log(`    e-mail: ${admin.email}`)
+    console.log(`    senha:  ${admin.senha}`)
+    console.log('    Deixe o campo de código em branco no primeiro login.')
+    console.log('    A verificação em duas etapas será exigida logo em seguida.')
+    console.log('─'.repeat(64))
+  } else {
+    console.log(`  usuario       → nenhum criado (${admin.motivo})`)
+  }
 
   console.log('\nPronto.')
 }

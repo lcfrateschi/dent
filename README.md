@@ -30,6 +30,28 @@ Nenhum `.env` é necessário para desenvolvimento — os defaults estão no
 
 O Postgres é publicado **só no loopback** — banco de prontuário não escuta na rede.
 
+### Primeiro acesso
+
+O seed cria um administrador **só fora de produção**, e imprime as credenciais
+no log do `migrate`:
+
+```
+e-mail: admin@local
+senha:  trocar-esta-senha-agora
+```
+
+Deixe o campo de código **em branco** no primeiro login. Em seguida o sistema
+obriga a configurar a verificação em duas etapas — o middleware não deixa sair
+dessa tela antes disso. Escaneie o QR com Google Authenticator, Authy,
+1Password ou Microsoft Authenticator.
+
+Em **produção** nenhum usuário é semeado, e o app se recusa a subir com o
+`AUTH_SECRET` de desenvolvimento. Gere um próprio:
+
+```bash
+openssl rand -base64 48
+```
+
 ### Comandos
 
 ```bash
@@ -62,9 +84,9 @@ npm run dev
 ## Testes
 
 ```bash
-npm test          # 148 testes de domínio e geometria (Vitest, sem banco)
+npm test               # 238 testes (Vitest, sem banco)
 npm run typecheck
-npm run db:verificar   # invariantes no banco (precisa do compose de pé)
+npm run db:verificar   # 35 invariantes no banco (precisa do compose de pé)
 ```
 
 Os testes de domínio não tocam o banco de propósito: são as regras puras
@@ -77,13 +99,23 @@ agenda, soma das parcelas — têm verificação própria em
 
 ```
 app/
+  (staff)/         realm da equipe: sessão e consultas próprias
+  entrar/          login com e-mail + senha + código TOTP
+  configurar-mfa/  obrigatório no primeiro acesso
   design/          playground do design system (fonte dos previews)
+  api/auth/        rotas do Auth.js
+middleware.ts      guarda de rotas + trava de MFA
 components/
   odontograma/     geometria pura + SVG dos 52 dentes
+  paciente/        faixa de alertas clínicos
   ui/              componentes base
 lib/
+  auth/            scrypt, TOTP, config do Auth.js (base Edge + completa Node)
+  authz/           RBAC — matriz única de permissões, e guardas de sessão
+  auditoria/       trilha LGPD; leitura também é evento
+  pacientes/       schema Zod, consultas e server actions
   db/schema/       27 tabelas Drizzle, uma área do domínio por arquivo
-  db/seed/         dados de referência
+  db/seed/         dados de referência + primeiro admin
   domain/          regras puras, com .test.ts ao lado
 drizzle/
   0000_inicial.sql      schema gerado
@@ -93,11 +125,28 @@ docker/
   verificar-invariantes.sql  prova das invariantes
 ```
 
+## Segurança
+
+| Garantia | Onde vive |
+|---|---|
+| MFA obrigatório para staff | `middleware.ts` prende em `/configurar-mfa` |
+| Senha com scrypt (N=2^15) | `lib/auth/senha.ts`, sem dependência externa |
+| TOTP RFC 6238 | `lib/auth/totp.ts`, testado com os vetores oficiais |
+| Permissões numa fonte única | `lib/authz/politicas.ts` |
+| Autorização em toda action e página | `exigirPermissao` / `exigirPermissaoPagina` |
+| Leitura de prontuário auditada | `lib/auditoria/registrar.ts` |
+| Prontuário imutável, agenda sem conflito | triggers e EXCLUDE no banco |
+
+As três separações de acesso pedidas pela clínica, todas cobertas por teste:
+recepção **não** lê evolução clínica, financeiro **não** lê dado clínico,
+dentista **não** altera cobrança. O admin **não** é superusuário clínico.
+
 ## Estado atual
 
 | Fase | Situação |
 |---|---|
-| 1 — Domínio e banco | pronta e verificada em Postgres real |
-| 2 — Design system | tokens e primeiros componentes; odontograma pronto |
-| 3 — Esqueleto, RBAC, CRUD de paciente | a fazer |
-| 4+ | ver `ROADMAP.md` |
+| 1 — Domínio e banco | pronta, verificada em Postgres real (35 invariantes) |
+| 2 — Design system | tokens, componentes base, odontograma pronto |
+| 3 — Esqueleto, MFA, RBAC, CRUD de paciente | pronta |
+| 4 — Agenda | a fazer |
+| 5+ | ver `ROADMAP.md` |
