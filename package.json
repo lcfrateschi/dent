@@ -14,6 +14,7 @@
     "whatsapp:despachar": "tsx lib/mensageria/executar-despacho.ts",
     "whatsapp:demo": "tsx lib/mensageria/demonstrar.ts",
     "documentos:demo": "tsx lib/documentos/demonstrar.ts",
+    "relatorios:demo": "tsx lib/relatorios/demonstrar.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

@@ -84,7 +84,7 @@ npm run dev
 ## Testes
 
 ```bash
-npm test               # 637 testes (Vitest, sem banco)
+npm test               # 708 testes (Vitest, sem banco)
 npm run typecheck
 npm run db:verificar   # 102 invariantes no banco (precisa do compose de pé)
 ```
@@ -160,6 +160,39 @@ Quatro coisas que valem saber:
   A geração é ato privativo do CD (`prontuario: assinar`), e o CID **não** é
   impresso sem autorização expressa do paciente.
 
+## Painel e relatórios (Fase 11)
+
+```bash
+# confere cada indicador contra valores calculados à mão
+docker compose exec app npm run relatorios:demo
+```
+
+O painel mostra **caixa e produção em blocos separados, nunca somados**. Essa é a
+decisão que organiza a fase: o que foi executado e o que entrou no caixa andam em
+ritmos diferentes — um tratamento feito em julho pode ser recebido em outubro, e a
+comissão da clínica é sobre o recebido. Um "faturamento" que junta os dois
+responde a pergunta de ninguém.
+
+Outras três que valem saber:
+
+- **Falta e cancelamento têm taxas separadas.** Quem avisou liberou o horário;
+  quem não apareceu queimou a cadeira. Cancelado não entra na base da taxa de
+  falta — junto, um mês de cancelamentos avisados pareceria um mês de faltas.
+- **Ocupação tem duas medidas.** Reservada e realizada: 90% reservada com 20% de
+  falta é problema de confirmação, 65% reservada sem falta é problema de captação,
+  e a ação para cada um é oposta. O divisor são os minutos que a clínica tinha
+  disponíveis (horário de funcionamento × dias × profissionais ativos).
+- **Taxa sem base é “—”, não 0%.** Mês sem atendimento não tem falta de 0%: não
+  tem taxa. E variação sobre base zero é “do zero”, nunca “+100%” nem “+∞%”.
+
+A tela de **Auditoria** (só admin) é onde a trilha da Fase 1 finalmente pode ser
+lida: quem acessou o prontuário de quem, quando, de qual IP. A própria consulta
+entra na trilha — sem isso, o único acesso não registrado seria o acesso à
+auditoria.
+
+Exportação em CSV registra um evento `exportacao` próprio: quem exporta leva o
+dado embora, e a LGPD separa isso de leitura com razão.
+
 ## Onde está o quê
 
 ```
@@ -171,6 +204,7 @@ app/
   api/auth/        rotas do Auth.js
   api/whatsapp/    webhook da Meta — pública, autenticada por HMAC
   api/documentos/  download autorizado e auditado de anexo do prontuário
+  api/relatorios/  exportação CSV, com a exportação registrada na trilha
 middleware.ts      guarda de rotas + trava de MFA
 components/
   agenda/          grade semanal e estilos de status
@@ -189,6 +223,7 @@ lib/
   mensageria/      fila do WhatsApp, provedores, webhook e resposta do paciente
   armazenamento/   provedor em disco e S3/R2, com SigV4 escrito à mão
   documentos/      anexo, emissão de atestado/receita e escritor de PDF
+  relatorios/      agregações do painel e leitura da trilha de auditoria
   odontograma/     tradução item_plano/execucao ↔ estado das faces
   pacientes/       schema Zod, consultas e server actions
   db/schema/       29 tabelas Drizzle, uma área do domínio por arquivo
@@ -244,6 +279,8 @@ período da agenda, ambas com `aria-label`.
 | Chave de storage nunca vem do nome enviado | `chaveArmazenamento`, e travessia recusada em duas camadas |
 | Documento não se exclui nem troca de paciente | triggers em `drizzle/0011` |
 | CID só sai no atestado com autorização do paciente | `lib/domain/impressos.ts` |
+| Consultar a auditoria também é auditado | `lib/relatorios/auditoria.ts` |
+| CSV sem injeção de fórmula em planilha | `lib/domain/csv.ts` |
 | Tokens do código = tokens do catálogo | `lib/ui/tokens.test.ts` |
 
 As três separações de acesso pedidas pela clínica, todas cobertas por teste:
@@ -264,4 +301,5 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 8 — Financeiro | pronta |
 | 9 — Confirmação por WhatsApp | pronta (provedor simulado; Meta pendente de conta) |
 | 10 — Imagens e documentos | pronta (armazenamento em disco; S3/R2 pendente de bucket) |
-| 11+ | ver `ROADMAP.md` |
+| 11 — Painel, relatórios e auditoria | pronta |
+| 12+ | ver `ROADMAP.md` |

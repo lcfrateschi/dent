@@ -21,20 +21,33 @@ import { Icone, type NomeIcone } from '@/components/ui/Icone'
 interface ItemMenu {
   href: string
   rotulo: string
-  recurso: Recurso
+  /**
+   * Recursos que dão acesso ao item. Basta UM.
+   *
+   * É lista porque o painel tem dois públicos com permissões diferentes: o
+   * dentista entra por `relatorio_clinico`, o financeiro por
+   * `relatorio_financeiro`, e cada um vê só o seu bloco lá dentro.
+   */
+  recursos: readonly Recurso[]
   icone: NomeIcone
   /** Fase que constrói a tela. Ausente = já existe. */
   fase?: number
 }
 
 const MENU: readonly ItemMenu[] = [
-  { href: '/pacientes', rotulo: 'Pacientes', recurso: 'paciente', icone: 'pacientes' },
-  { href: '/agenda', rotulo: 'Agenda', recurso: 'agenda', icone: 'agenda' },
-  { href: '/whatsapp', rotulo: 'WhatsApp', recurso: 'mensageria', icone: 'whatsapp' },
-  { href: '/financeiro', rotulo: 'Financeiro', recurso: 'cobranca', icone: 'financeiro' },
-  { href: '/convenios', rotulo: 'Convênios', recurso: 'convenio', icone: 'convenios', fase: 13 },
-  { href: '/usuarios', rotulo: 'Usuários', recurso: 'usuario', icone: 'usuarios', fase: 3 },
-  { href: '/auditoria', rotulo: 'Auditoria', recurso: 'auditoria', icone: 'auditoria', fase: 11 },
+  {
+    href: '/painel',
+    rotulo: 'Painel',
+    recursos: ['relatorio_clinico', 'relatorio_financeiro'],
+    icone: 'painel',
+  },
+  { href: '/pacientes', rotulo: 'Pacientes', recursos: ['paciente'], icone: 'pacientes' },
+  { href: '/agenda', rotulo: 'Agenda', recursos: ['agenda'], icone: 'agenda' },
+  { href: '/whatsapp', rotulo: 'WhatsApp', recursos: ['mensageria'], icone: 'whatsapp' },
+  { href: '/financeiro', rotulo: 'Financeiro', recursos: ['cobranca'], icone: 'financeiro' },
+  { href: '/auditoria', rotulo: 'Auditoria', recursos: ['auditoria'], icone: 'auditoria' },
+  { href: '/convenios', rotulo: 'Convênios', recursos: ['convenio'], icone: 'convenios', fase: 13 },
+  { href: '/usuarios', rotulo: 'Usuários', recursos: ['usuario'], icone: 'usuarios', fase: 3 },
 ]
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
@@ -42,7 +55,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
   // O middleware já barra; esta é a segunda tranca, caso o matcher mude.
   if (!ator) redirect('/entrar')
 
-  const itens = MENU.filter((i) => podeVer(ator.perfil, i.recurso))
+  const itens = MENU.filter((i) => i.recursos.some((r) => podeVer(ator.perfil, r)))
 
   return (
     <div className="min-h-dvh bg-bg">

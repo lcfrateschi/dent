@@ -114,6 +114,23 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **Posologia** | Dose, via, intervalo e duração. Sem ela a farmácia não dispensa e o paciente inventa; a receita é recusada na emissão. |
 | **Controle especial** | Medicamento da Portaria 344/98 (diazepam, tramadol, codeína…). Exige receituário próprio, numerado e em duas vias — o sistema avisa, mas não bloqueia: quem sabe o que prescreve é o CD. |
 
+## Indicadores
+
+| Termo | Definição |
+|---|---|
+| **Caixa** | O que ENTROU no período (pagamentos). Não se soma com produção. |
+| **Produção** | O que foi EXECUTADO no período, no valor acordado com o paciente. Não é dinheiro em conta. |
+| **Conciliado** | Pagamento conferido no extrato. É a base da comissão — ver *Comissão*. |
+| **Ocupação reservada** | Minutos de agenda reservados ÷ minutos disponíveis. Conta a falta, que reservou e não liberou. |
+| **Ocupação realizada** | Minutos que viraram atendimento ÷ minutos disponíveis. A diferença entre as duas é o custo da falta. |
+| **Minutos disponíveis** | Horário de funcionamento × dias do período × profissionais ativos. Não é 24 h. |
+| **Taxa de falta** | Faltas ÷ (concluídos + faltas). Cancelado **não** entra na base. |
+| **Taxa de cancelamento** | Cancelados ÷ tudo que foi marcado no período. Indicador próprio, não somado à falta. |
+| **Efeito da confirmação** | Diferença, em pontos percentuais, entre a falta de quem confirmou e de quem não confirmou. Só é calculada com pelo menos 10 casos de cada lado. |
+| **Ticket médio** | Recebido ÷ pacientes DISTINTOS que pagaram. Não por atendimento: seis sessões de um canal não são seis pacientes. |
+| **"—" numa taxa** | Não há base para calcular. **Diferente de 0%.** |
+| **"do zero"** | Variação a partir de base zero. Não é "+100%" nem "+∞%". |
+
 ## LGPD
 
 | Termo | Definição |

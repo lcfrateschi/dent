@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Clock,
   CreditCard,
+  ChartColumn,
   Download,
   Image as ImagemIcone,
   MailQuestion,
@@ -55,6 +56,7 @@ import {
 
 export const ICONES = {
   // Navegação
+  painel: ChartColumn,
   pacientes: Users,
   agenda: CalendarDays,
   financeiro: Wallet,

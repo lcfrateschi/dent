@@ -110,6 +110,15 @@ um relatório verde provando invariante nenhuma.
   depois de chamar a Meta, ninguém sabe se ela entregou. A linha fica visível na tela de
   WhatsApp e a decisão é humana. Perder um lembrete custa uma ligação; mandar dois custa a
   confiança do paciente. A trigger de transição em `drizzle/0009` impede `enviando → pendente`.
+- **Caixa e produção NUNCA são somados.** São grandezas diferentes — executado em
+  julho pode entrar em outubro, e a comissão é sobre o recebido. Não existe função
+  que devolva a soma dos dois, e não deve passar a existir. Ver
+  `lib/relatorios/consultas.ts`.
+- **Taxa sem base é `null`, não zero.** Mês sem atendimento não tem taxa de falta
+  de 0%: não tem taxa. A tela escreve "—". Variação sobre base zero é "do zero",
+  nunca "+100%". Ver `lib/domain/indicadores.ts`.
+- **Falta e cancelamento têm taxas separadas.** Cancelado avisado liberou o
+  horário e fica FORA da base da taxa de falta.
 - **A mensagem de WhatsApp não carrega dado clínico.** Só nome, profissional, data e hora — a
   tela do celular do paciente é lida por outras pessoas. Ver `lib/domain/textoMensagem.ts`.
 - **Anexo do prontuário NÃO é servido por URL assinada.** Os bytes passam pela
