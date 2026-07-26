@@ -60,6 +60,7 @@ npm run docker:logs      # segue o log do app
 npm run docker:down      # para
 npm run docker:reset     # apaga o volume e recria o banco do zero
 npm run db:verificar     # prova as invariantes do banco (35 casos)
+npm run design:previews  # gera o catálogo em design/ para o Claude Design
 ```
 
 Variante de produção (imagem enxuta, `output: standalone`, roda sem root):
@@ -84,7 +85,7 @@ npm run dev
 ## Testes
 
 ```bash
-npm test               # 238 testes (Vitest, sem banco)
+npm test               # 319 testes (Vitest, sem banco)
 npm run typecheck
 npm run db:verificar   # 35 invariantes no banco (precisa do compose de pé)
 ```
@@ -148,5 +149,6 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 1 — Domínio e banco | pronta, verificada em Postgres real (35 invariantes) |
 | 2 — Design system | tokens, componentes base, odontograma pronto |
 | 3 — Esqueleto, MFA, RBAC, CRUD de paciente | pronta |
-| 4 — Agenda | a fazer |
-| 5+ | ver `ROADMAP.md` |
+| 4 — Agenda | pronta |
+| 5 — Anamnese e odontograma | a fazer |
+| 6+ | ver `ROADMAP.md` |

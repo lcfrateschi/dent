@@ -27,7 +27,7 @@ interface ItemMenu {
 
 const MENU: readonly ItemMenu[] = [
   { href: '/pacientes', rotulo: 'Pacientes', recurso: 'paciente' },
-  { href: '/agenda', rotulo: 'Agenda', recurso: 'agenda', fase: 4 },
+  { href: '/agenda', rotulo: 'Agenda', recurso: 'agenda' },
   { href: '/financeiro', rotulo: 'Financeiro', recurso: 'cobranca', fase: 8 },
   { href: '/convenios', rotulo: 'Convênios', recurso: 'convenio', fase: 13 },
   { href: '/usuarios', rotulo: 'Usuários', recurso: 'usuario', fase: 3 },

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import {
   boolean,
   check,
+  jsonb,
   numeric,
   pgTable,
   smallint,
@@ -11,6 +12,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
+import { HORARIO_PADRAO } from '@/lib/domain/horario'
 import { baseComissaoEnum, perfilUsuarioEnum } from './enums'
 
 /**
@@ -37,6 +39,20 @@ export const clinica = pgTable(
     uf: varchar('uf', { length: 2 }),
     /** Base de cálculo da comissão, padrão da clínica. Ver GLOSSARIO.md. */
     baseComissao: baseComissaoEnum('base_comissao').notNull().default('valor_recebido'),
+    /**
+     * Fuso da clínica. A agenda converte instante ↔ hora local por aqui, nunca
+     * pelo fuso do servidor — senão o mesmo atendimento aparece em horas
+     * diferentes no container e na máquina do dentista. Ver lib/domain/fuso.ts.
+     */
+    fusoHorario: text('fuso_horario').notNull().default('America/Sao_Paulo'),
+    /**
+     * Faixas de atendimento por dia da semana ('0'..'6' → [{inicio, fim}]).
+     * Duas faixas por dia é o normal: quase todo consultório fecha para almoço.
+     * Validado por lib/domain/horario.ts.
+     */
+    horarioFuncionamento: jsonb('horario_funcionamento').notNull().default(HORARIO_PADRAO),
+    /** Granularidade dos horários oferecidos na agenda, em minutos. */
+    passoAgendaMinutos: smallint('passo_agenda_minutos').notNull().default(15),
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check('clinica_singleton', sql`${t.id} = 1`)],

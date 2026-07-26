@@ -1,0 +1,3 @@
+ALTER TABLE "clinica" ADD COLUMN "fuso_horario" text DEFAULT 'America/Sao_Paulo' NOT NULL;--> statement-breakpoint
+ALTER TABLE "clinica" ADD COLUMN "horario_funcionamento" jsonb DEFAULT '{"0":[],"1":[{"inicio":"08:00","fim":"12:00"},{"inicio":"13:00","fim":"18:00"}],"2":[{"inicio":"08:00","fim":"12:00"},{"inicio":"13:00","fim":"18:00"}],"3":[{"inicio":"08:00","fim":"12:00"},{"inicio":"13:00","fim":"18:00"}],"4":[{"inicio":"08:00","fim":"12:00"},{"inicio":"13:00","fim":"18:00"}],"5":[{"inicio":"08:00","fim":"12:00"},{"inicio":"13:00","fim":"18:00"}],"6":[{"inicio":"08:00","fim":"12:00"}]}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "clinica" ADD COLUMN "passo_agenda_minutos" smallint DEFAULT 15 NOT NULL;

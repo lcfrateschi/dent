@@ -18,7 +18,8 @@
     "docker:up": "docker compose up",
     "docker:down": "docker compose down",
     "docker:reset": "docker compose down -v && docker compose up",
-    "docker:logs": "docker compose logs -f app"
+    "docker:logs": "docker compose logs -f app",
+    "design:previews": "tsx scripts/previews/gerar.ts"
   },
   "engines": {
     "node": ">=20.11.0"

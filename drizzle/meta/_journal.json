@@ -15,6 +15,13 @@
       "when": 1785051744411,
       "tag": "0001_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785059142371,
+      "tag": "0002_agenda_config",
+      "breakpoints": true
     }
   ]
 }
