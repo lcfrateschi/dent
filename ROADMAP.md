@@ -157,7 +157,8 @@ Depois de pronto, cada módulo seguinte é repetição de um padrão já provado
 | 13 | Convênios / TISS | 3–4 | ◐ controle interno pronto (guia, glosa, recurso, repasse conciliado item a item). Tabela 22 da ANS importada — 36/49 procedimentos com TUSS oficial, 13 dependem de decisão da clínica (`dados/README.md`). **XML TISS não validado contra o XSD da ANS** |
 | 14 | Estoque | 1 | ✅ pronta. FEFO, validade no fuso da clínica, saldo derivado por trigger, livro append-only, ficha técnica, rastreabilidade de lote → paciente. `npm run estoque:demo` e `npm run estoque:telas` |
 | 15 | Cadastros administrativos | 2 | ✅ pronta. Usuários com senha temporária e reset de MFA, ajustes da clínica, cadeiras, operadoras + tabela negociada com vigência, carteirinha, materiais e fichas técnicas. `npm run admin:verificar` |
-| | **Produto completo** | **~26** | |
+| 16 | Operação | 1 | ✅ pronta. Baixa de estoque proposta na execução (idempotente), backup de banco + anexos com restauração testada, serviço de despacho do WhatsApp |
+| | **Produto completo** | **~27** | |
 
 ### Por que convênio na Fase 13, mesmo sendo essencial
 

@@ -21,6 +21,13 @@ import {
   alternarMaterialComAtor,
   salvarFichaTecnicaComAtor,
 } from './cadastro'
+import {
+  type ItemConfirmado,
+  type PropostaDeBaixa,
+  type ResultadoBaixa,
+  confirmarBaixaComAtor,
+  proporBaixaComAtor,
+} from './baixaDaExecucao'
 
 /**
  * Ações do estoque. Camada fina: **autoriza e delega**.
@@ -103,6 +110,33 @@ export async function salvarFichaTecnica(
 export async function alternarMaterial(materialId: string, ativo: boolean): Promise<ResultadoFicha> {
   const ator = await exigirPermissao('estoque', 'excluir')
   const r = await alternarMaterialComAtor(ator, materialId, ativo)
+  if (r.ok) revalidatePath('/estoque')
+  return r
+}
+
+// ── Baixa a partir da execução ────────────────────────────────────────────────
+
+export type { PropostaDeBaixa, ResultadoBaixa } from './baixaDaExecucao'
+
+/**
+ * Proposta de consumo de uma execução.
+ *
+ * `estoque: criar` — a mesma permissão da baixa manual, e é quem executou o
+ * procedimento que confirma. Ler a proposta já mostra nome de material e lote,
+ * mas não dado clínico além do procedimento que a própria pessoa acabou de
+ * registrar.
+ */
+export async function proporBaixaDaExecucao(execucaoId: string): Promise<PropostaDeBaixa | null> {
+  const ator = await exigirPermissao('estoque', 'criar')
+  return proporBaixaComAtor(ator, execucaoId)
+}
+
+export async function confirmarBaixaDaExecucao(
+  execucaoId: string,
+  itens: readonly ItemConfirmado[],
+): Promise<ResultadoBaixa> {
+  const ator = await exigirPermissao('estoque', 'criar')
+  const r = await confirmarBaixaComAtor(ator, execucaoId, itens)
   if (r.ok) revalidatePath('/estoque')
   return r
 }

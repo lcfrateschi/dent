@@ -15,6 +15,7 @@ import {
   usuario,
 } from '@/lib/db/schema'
 import { avaliarReposicao, classificarValidade, consolidarInsumos } from '@/lib/domain/estoque'
+import { paraMilesimos } from '@/lib/domain/quantidade'
 import { addDias } from '@/lib/domain/datas'
 import { hojeDaClinica } from '@/lib/orcamento/consultas'
 import {
@@ -30,6 +31,11 @@ import {
   descartarLoteComAtor,
   registrarEntradaComAtor,
 } from './movimentar'
+import {
+  confirmarBaixaComAtor,
+  execucoesSemBaixa,
+  proporBaixaComAtor,
+} from './baixaDaExecucao'
 import { eq, sql } from 'drizzle-orm'
 
 /**
@@ -446,8 +452,82 @@ async function main(): Promise<void> {
       `cobertura estimada de ${consumo.diasDeCobertura} dias com o saldo atual`,
     )
 
-    // ── 11. O livro não se apaga ────────────────────────────────────────────
-    passo(11, 'Append-only: nem UPDATE nem DELETE no livro de movimentos')
+    // ── 11. Baixa a partir da execução ──────────────────────────────────────
+    passo(11, 'A execução propõe o consumo, com o lote FEFO já escolhido')
+
+    const [exec2] = await db
+      .insert(execucao)
+      .values({ itemPlanoId: item!.id, profissionalId: prof!.id, executadoEm: new Date() })
+      .returning({ id: execucao.id })
+
+    const fila = await execucoesSemBaixa(100)
+    conferir(
+      fila.some((f) => f.execucaoId === exec2!.id),
+      'a execução aparece na fila de consumo a lançar',
+    )
+
+    const proposta = await proporBaixaComAtor(ator, exec2!.id)
+    conferir(proposta !== null, 'há proposta, porque o procedimento tem ficha técnica')
+    conferir(
+      proposta?.jaLancada === false,
+      'e ela sabe que nada foi lançado ainda para esta execução',
+    )
+    const luvaNaProposta = proposta?.itens.find((i) => i.materialId === luvaId)
+    // `2.000` e não `2`: a coluna é numeric(12,3) e o Postgres devolve a escala.
+    // Comparar o texto cru aqui reprovava um valor correto.
+    conferir(
+      paraMilesimos(luvaNaProposta?.quantidade ?? '0') === 2000,
+      `a quantidade vem da ficha técnica (${luvaNaProposta?.quantidade})`,
+    )
+    conferir(
+      (luvaNaProposta?.alocacoes.length ?? 0) > 0 &&
+        luvaNaProposta?.alocacoes[0]?.codigoFabricante === 'CX-LONGE',
+      `e o lote proposto é o que vence primeiro entre os que têm saldo (${luvaNaProposta?.alocacoes[0]?.codigoFabricante})`,
+    )
+
+    const confirmada = await confirmarBaixaComAtor(
+      ator,
+      exec2!.id,
+      proposta!.itens.map((i) => ({ materialId: i.materialId, quantidade: i.quantidade })),
+    )
+    conferir(confirmada.ok, confirmada.mensagem)
+
+    const ligados = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(movimentoEstoque)
+      .where(eq(movimentoEstoque.execucaoId, exec2!.id))
+    conferir(
+      (ligados[0]?.n ?? 0) > 0,
+      `${ligados[0]?.n} movimento(s) ficaram ligados à execução — é o elo da rastreabilidade`,
+    )
+
+    passo(12, 'Duplo clique NÃO baixa duas vezes')
+    const denovo = await confirmarBaixaComAtor(
+      ator,
+      exec2!.id,
+      proposta!.itens.map((i) => ({ materialId: i.materialId, quantidade: i.quantidade })),
+    )
+    conferir(
+      !denovo.ok && denovo.mensagem.includes('já foi lançado'),
+      `recusado: "${denovo.ok ? '' : denovo.mensagem}"`,
+    )
+    const depoisDoDuplo = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(movimentoEstoque)
+      .where(eq(movimentoEstoque.execucaoId, exec2!.id))
+    conferir(
+      depoisDoDuplo[0]?.n === ligados[0]?.n,
+      'e a contagem de movimentos não mudou',
+    )
+
+    const filaDepois = await execucoesSemBaixa(100)
+    conferir(
+      !filaDepois.some((f) => f.execucaoId === exec2!.id),
+      'a execução saiu da fila de pendentes',
+    )
+
+    // ── 13. O livro não se apaga ────────────────────────────────────────────
+    passo(13, 'Append-only: nem UPDATE nem DELETE no livro de movimentos')
     let recusouUpdate = false
     try {
       await db
@@ -484,6 +564,7 @@ async function main(): Promise<void> {
     console.log('  • contagem ajusta pelo que foi contado, com motivo obrigatório')
     console.log('  • o mínimo sugere reposição ao dobro, não ao próprio mínimo')
     console.log('  • lote recolhido responde em qual paciente foi usado')
+    console.log('  • a execução propõe o consumo e o duplo clique não baixa duas vezes')
     console.log('  • o livro do estoque não se altera nem se apaga')
   } finally {
     await limpar(pacienteId, u!.id, [luvaId, implanteId])

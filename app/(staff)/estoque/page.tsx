@@ -5,6 +5,7 @@ import { pode } from '@/lib/authz/politicas'
 import { exigirPermissaoPagina } from '@/lib/authz/sessao'
 import { ROTULO_MOVIMENTO } from '@/lib/domain/estoque'
 import { formatarQuantidade } from '@/lib/domain/quantidade'
+import { execucoesSemBaixa } from '@/lib/estoque/baixaDaExecucao'
 import {
   extratoDeMovimentos,
   lotesVencendo,
@@ -15,8 +16,20 @@ import { cn } from '@/lib/ui/cn'
 import { dataBr, dataHoraBr, reais } from '@/lib/ui/moeda'
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { ConsumoPendente } from './ConsumoPendente'
 
 export const metadata: Metadata = { title: 'Estoque' }
+
+/**
+ * Quem lança consumo vê a fila de pendentes.
+ *
+ * A fila mostra NOME DE PACIENTE — é o atendimento em que o material foi usado.
+ * Perfil que só lê estoque (financeiro) não recebe a consulta: não é dado dele, e
+ * carregar a lista "só para não mostrar" já seria acesso a dado de paciente.
+ */
+function podeMovimentarConsumo(perfil: Parameters<typeof pode>[0]): boolean {
+  return pode(perfil, 'estoque', 'criar')
+}
 
 /**
  * Painel de estoque.
@@ -32,13 +45,16 @@ export const metadata: Metadata = { title: 'Estoque' }
 export default async function Page() {
   const ator = await exigirPermissaoPagina('estoque', 'ler')
 
-  const [resumo, atencao, todos, vencendo, extrato] = await Promise.all([
+  const [resumo, atencao, todos, vencendo, extrato, pendentes] = await Promise.all([
     resumoDoEstoque(),
     posicaoDeEstoque({ apenasAtencao: true }),
     posicaoDeEstoque(),
     lotesVencendo(60),
     extratoDeMovimentos({ limite: 25 }),
+    podeMovimentarConsumo(ator.perfil) ? execucoesSemBaixa(30) : Promise.resolve([]),
   ])
+
+  const agora = Date.now()
 
   const podeMovimentar = pode(ator.perfil, 'estoque', 'criar')
   const podeCadastrar = pode(ator.perfil, 'estoque', 'excluir')
@@ -90,6 +106,29 @@ export default async function Page() {
         />
         <Cartao rotulo="Valor em estoque" valor={reais(resumo.valorTotal)} />
       </div>
+
+      {podeMovimentar && pendentes.length > 0 ? (
+        <Card>
+          <CardHeader
+            titulo={`Consumo a lançar (${pendentes.length})`}
+            descricao="Atendimentos com ficha técnica cujo material ainda não saiu do estoque. O lote que vence primeiro já vem escolhido."
+          />
+          <CardBody className="p-0">
+            <ConsumoPendente
+              pendentes={pendentes.map((p) => ({
+                execucaoId: p.execucaoId,
+                executadoEmIso: p.executadoEm.toISOString(),
+                pacienteId: p.pacienteId,
+                pacienteNome: p.pacienteNome,
+                procedimentoNome: p.procedimentoNome,
+                denteFdi: p.denteFdi,
+                profissionalNome: p.profissionalNome,
+                diasAtras: Math.floor((agora - p.executadoEm.getTime()) / 86_400_000),
+              }))}
+            />
+          </CardBody>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader

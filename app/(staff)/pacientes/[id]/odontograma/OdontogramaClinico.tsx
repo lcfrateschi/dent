@@ -16,6 +16,7 @@ import {
 import type { EstadoDenteRegistrado, ItemDoOdontograma } from '@/lib/odontograma/consultas'
 import { type Denticao, type Face, exigirDente } from '@/lib/domain/dentes'
 import { descreverFaces } from '@/lib/domain/faces'
+import { PainelDeBaixa } from '@/components/estoque/PainelDeBaixa'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 
@@ -71,6 +72,8 @@ export function OdontogramaClinico({
   const [procedimentoId, setProcedimentoId] = useState('')
   const [observacao, setObservacao] = useState('')
   const [mensagem, setMensagem] = useState<{ tipo: 'erro' | 'ok'; texto: string } | null>(null)
+  /** Execução recém-registrada cujo material ainda não foi lançado. */
+  const [baixaPendente, setBaixaPendente] = useState<string | null>(null)
   const [pendente, iniciar] = useTransition()
 
   const procedimento = procedimentos.find((p) => p.id === procedimentoId)
@@ -145,8 +148,18 @@ export function OdontogramaClinico({
     setMensagem(null)
     iniciar(async () => {
       const r = await registrarExecucao(itemId, pacienteId)
-      if (!r.ok) setMensagem({ tipo: 'erro', texto: r.mensagem })
-      else router.refresh()
+      if (!r.ok) {
+        setMensagem({ tipo: 'erro', texto: r.mensagem })
+        return
+      }
+      /**
+       * Guarda o id da execução para propor a baixa do material aqui mesmo.
+       *
+       * É o momento em que a pessoa sabe o que usou. Empurrar isso para a tela de
+       * estoque, depois do atendimento, é o que faz a baixa nunca acontecer.
+       */
+      if (r.execucaoId) setBaixaPendente(r.execucaoId)
+      router.refresh()
     })
   }
 
@@ -166,6 +179,13 @@ export function OdontogramaClinico({
     <div className="space-y-4">
       {mensagem ? (
         <Alerta tipo={mensagem.tipo === 'erro' ? 'critico' : 'sucesso'}>{mensagem.texto}</Alerta>
+      ) : null}
+
+      {baixaPendente ? (
+        <PainelDeBaixa
+          execucaoId={baixaPendente}
+          aoConcluir={() => setBaixaPendente(null)}
+        />
       ) : null}
 
       <Card>

@@ -119,6 +119,38 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # ── Despachante do WhatsApp ────────────────────────────────────────────────
+  # `npm run whatsapp:despachar` é seguro de rodar em paralelo e quantas vezes
+  # quiser (chave de idempotência + SKIP LOCKED), e o horário de envio já está
+  # gravado em `agendado_para`. Faltava só alguém chamá-lo: sem isto, a fila
+  # enche e nenhum lembrete sai — o pior dos mundos, porque a tela mostra as
+  # mensagens "pendentes" e ninguém desconfia do relógio.
+  #
+  # Um serviço com laço próprio, em vez de cron do host: cron do host depende de
+  # alguém lembrar de instalar a linha, e essa pessoa não é a mesma que sobe o
+  # compose. Aqui o despacho sobe junto com o resto ou não sobe nada.
+  despachante:
+    profiles: ['prod']
+    build:
+      context: .
+      target: migrate # tem tsx e o código; não serve HTTP
+    restart: unless-stopped
+    command: >
+      sh -c 'while true; do
+        npm run whatsapp:despachar || echo "despacho falhou; tentando de novo no próximo ciclo";
+        sleep ${DESPACHO_INTERVALO_SEGUNDOS:-600};
+      done'
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-dent}:${POSTGRES_PASSWORD:-dent_dev}@db:5432/${POSTGRES_DB:-dent}
+      NODE_ENV: production
+      WHATSAPP_PROVEDOR: ${WHATSAPP_PROVEDOR:-simulado}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   pgdata:
   anexos:

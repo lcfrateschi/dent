@@ -24,7 +24,7 @@ import type { EstadoDenteRegistrado } from './consultas'
  */
 
 export type ResultadoOdontograma =
-  | { ok: true; itemId?: string; mensagem?: string }
+  | { ok: true; itemId?: string; mensagem?: string; execucaoId?: string }
   | { ok: false; mensagem: string }
 
 /**
@@ -166,19 +166,25 @@ export async function registrarExecucao(
     return { ok: false, mensagem: e instanceof Error ? e.message : 'Transição inválida.' }
   }
 
-  await db.transaction(async (tx) => {
+  // O id da execução volta para a tela: é ele que liga o consumo de material ao
+  // atendimento, e sem devolvê-lo a proposta de baixa não teria a que se referir.
+  const execucaoId = await db.transaction(async (tx) => {
     if (item.status === 'proposto') {
       await tx
         .update(itemPlano)
         .set({ status: 'aprovado', aprovadoEm: new Date() })
         .where(eq(itemPlano.id, itemId))
     }
-    await tx.insert(execucao).values({
-      itemPlanoId: itemId,
-      profissionalId: ator.profissionalId!,
-      executadoEm: new Date(),
-    })
+    const [nova] = await tx
+      .insert(execucao)
+      .values({
+        itemPlanoId: itemId,
+        profissionalId: ator.profissionalId!,
+        executadoEm: new Date(),
+      })
+      .returning({ id: execucao.id })
     await tx.update(itemPlano).set({ status: 'executado' }).where(eq(itemPlano.id, itemId))
+    return nova?.id
   })
 
   await registrar({
@@ -191,7 +197,7 @@ export async function registrarExecucao(
   })
 
   revalidatePath(`/pacientes/${pacienteId}/odontograma`)
-  return { ok: true, itemId }
+  return { ok: true, itemId, execucaoId }
 }
 
 /** Cancela um item ainda não executado — desfaz a marca vermelha. */

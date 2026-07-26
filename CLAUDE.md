@@ -108,9 +108,9 @@ um relatório verde provando invariante nenhuma.
 ### Pendências conhecidas
 
 - **Os anexos gravam em DISCO, não em bucket.** `ARMAZENAMENTO=disco` é o padrão e
-  é uma escolha válida para clínica em um servidor só — mas o volume `anexos`
-  **precisa entrar no backup**, e o banco sem os arquivos não reconstitui
-  prontuário. `lib/armazenamento/s3.ts` está pronto e **nunca executou contra um
+  é uma escolha válida para clínica em um servidor só. O volume `anexos` **entra no backup**
+  junto com o dump (`docker/backup.sh` empacota os dois; separar permitiria levar só metade, e
+  banco sem os arquivos não reconstitui prontuário). `lib/armazenamento/s3.ts` está pronto e **nunca executou contra um
   bucket real**; a assinatura SigV4, que é a parte difícil de diagnosticar, está
   provada contra os vetores oficiais da AWS.
 - **O PDF gerado nunca foi aberto num visualizador por mim.** Foi validado
@@ -122,9 +122,10 @@ um relatório verde provando invariante nenhuma.
   provedor/meta.ts` foi escrito pela documentação da Cloud API v21 e **nunca executou contra a
   API real** — é o único arquivo da fase que precisa de conferência quando as credenciais
   existirem. Todo o resto (fila, idempotência, webhook, efeito na agenda) está verificado.
-- **O despacho precisa de um cron.** `npm run whatsapp:despachar` é seguro de rodar em
-  paralelo e quantas vezes quiser (chave de idempotência + `SKIP LOCKED`). A cada 10 minutos
-  basta: o horário de envio já está gravado em `agendado_para`.
+- **O despacho tem serviço próprio.** `docker compose --profile prod up despachante` roda
+  `whatsapp:despachar` em laço, a cada 10 min (`DESPACHO_INTERVALO_SEGUNDOS`). Cron do host
+  dependeria de alguém lembrar de instalar a linha, e essa pessoa não é a mesma que sobe o
+  compose.
 - **`usuario.mfa_secret` está em texto claro.** Não é bypass de autenticação — ainda exige a
   senha — mas agrava um vazamento de banco. Cifrar exige chave fora do banco e rotação.
 - **`codigo_tuss`: 36 dos 49 procedimentos já têm código OFICIAL.** A faixa odontológica da
@@ -266,6 +267,24 @@ Demonstrações que rodam contra o Postgres e conferem número, não fluxo:
 que usuário de perfil `dentista` ativo tenha linha em `profissional`. Dois inserts soltos comitam
 separado e o primeiro já viola — todo script de demonstração cria os dois dentro de
 `db.transaction`, como `criarUsuarioComAtor` faz.
+
+## Backup
+
+```bash
+./docker/backup.sh                      # banco + anexos num .tar.gz datado, com manifesto
+./docker/restaurar.sh --testar ARQ      # restaura num banco temporário e confere
+./docker/restaurar.sh --para-valer ARQ  # sobrescreve produção; exige digitar RESTAURAR
+```
+
+O `--testar` é o comando semanal, e existe porque **a única coisa que prova um backup é
+restaurá-lo**. Ele confere as contagens contra o manifesto, o número de triggers e EXCLUDE
+constraints, e tenta um `UPDATE` numa evolução restaurada — um dump que perdesse a trigger de
+append-only devolveria um prontuário editável, e nada além deste teste diria isso.
+
+**O que os scripts NÃO fazem:** cifrar e mandar para fora da máquina. Backup de prontuário é dado
+de saúde; em produção ele tem de sair cifrado e ir para outro lugar físico. Backup no mesmo disco
+do banco protege contra `DROP TABLE`, não contra o disco morrer nem contra ransomware.
+`backups/` está no `.gitignore` — dado de paciente nunca vai para o repositório.
 
 ## Armadilhas do domínio (já custaram retrabalho em outros sistemas)
 

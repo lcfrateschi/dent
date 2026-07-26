@@ -243,6 +243,29 @@ Decisões que valem saber:
 - **"Não vou poder ir" não cancela**: registra o aviso para a recepção remarcar. Um
   toque errado no celular não pode custar o horário do paciente.
 
+## Operação: backup, restauração e despacho
+
+```bash
+./docker/backup.sh                          # banco + anexos, num .tar.gz datado
+./docker/restaurar.sh --testar backups/…    # prova que o backup serve (banco temporário)
+docker compose --profile prod up despachante  # lembretes de WhatsApp a cada 10 min
+```
+
+**Os dois no mesmo arquivo, sempre.** O banco guarda o caminho da radiografia, não a
+imagem: um dump sem o volume `anexos` restaura um prontuário que aponta para
+arquivos inexistentes, e isso só aparece quando alguém tenta abrir a
+radiografia — meses depois.
+
+**`--testar` é o comando semanal.** Restaura num banco ao lado, confere as
+contagens contra o manifesto, conta triggers e EXCLUDE constraints e tenta um
+`UPDATE` numa evolução restaurada. Um dump que perdesse a trigger de append-only
+devolveria um prontuário editável, e só este teste diria isso. Backup nunca
+testado não é backup — é esperança com nome de arquivo.
+
+**O que falta, e é da clínica:** cifrar o arquivo e mandá-lo para fora da
+máquina. Backup no mesmo disco do banco protege contra `DROP TABLE`, não contra o
+disco morrer.
+
 ## Cadastros administrativos
 
 A clínica cadastra o que precisa **pela tela**, sem SQL e sem depender de quem
@@ -538,3 +561,4 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 13 — Convênios / TISS | controle interno pronto; TUSS oficial em 36/49; **XML não validado** (ver abaixo) |
 | 14 — Estoque | pronta (FEFO, validade, rastreabilidade de lote) |
 | 15 — Cadastros administrativos | pronta (a clínica opera sem depender de quem escreveu o código) |
+| 16 — Baixa na execução, backup e despacho | pronta (consumo em um clique, restauração testada, cron do WhatsApp) |
