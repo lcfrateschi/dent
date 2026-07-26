@@ -1,0 +1,37 @@
+﻿codigo_tuss;descricao;codigo_interno
+81000049;Consulta odontológica de Urgência;CONS-003
+81000065;Consulta odontológica inicial;CONS-001
+81000405;Radiografia panorâmica de mandíbula/maxila (ortopantomografia);RAD-002
+81000421;Radiografia periapical;RAD-001
+82000859;Exodontia de raiz residual;CIR-002
+82000875;Exodontia simples de permanente;CIR-001
+82000948;Gengivoplastia;PERIO-003
+82000980;Implante ósseo integrado;IMP-001
+82001286;Remoção de dentes inclusos / impactados;CIR-003
+82001499;Sutura de ferida em região buco-maxilo-facial;CIR-005
+83000046;Coroa de aço em dente decíduo;PED-003
+83000089;Exodontia simples de decíduo;PED-004
+83000127;Pulpotomia em dente decíduo;PED-002
+84000074;Aplicação de selante de fóssulas e fissuras;PREV-003
+84000090;Aplicação tópica de flúor;PREV-002
+84000198;Profilaxia: polimento coronário;PREV-001
+85100021;Clareamento dentário caseiro;DENT-008
+85100030;Clareamento dentário de consultório;DENT-007
+85100064;Faceta direta em resina fotopolimerizável;DENT-006
+85100196;Restauração em resina fotopolimerizável  1 face;DENT-001
+85100200;Restauração em resina fotopolimerizável  2 faces;DENT-002
+85100218;Restauração em resina fotopolimerizável  3 faces;DENT-003
+85100226;Restauração em resina fotopolimerizável  4 faces;DENT-004
+85200042;Pulpotomia;ENDO-005
+85200085;Restauração temporária / tratamento expectante;DENT-005
+85200140;Tratamento endodôntico birradicular;ENDO-002
+85200158;Tratamento endodôntico multirradicular;ENDO-003
+85200166;Tratamento endodôntico unirradicular;ENDO-001
+85300039;Raspagem sub-gengival/alisamento radicular;PERIO-002
+85300047;Raspagem supra-gengival;PERIO-001
+85300063;Tratamento de abscesso periodontal agudo;PERIO-004
+85400106;Coroa total em cerâmica pura;PROT-003
+85400157;Coroa total metalo cerâmica;PROT-002
+85400220;Núcleo metálico fundido;PROT-004
+85400408;Prótese total;PROT-005
+86000357;Manutenção de aparelho ortodôntico - aparelho fixo;ORTO-002

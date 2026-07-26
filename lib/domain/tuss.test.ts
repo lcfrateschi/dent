@@ -14,10 +14,17 @@ describe('formato do código TUSS', () => {
     expect(codigoTussTemFormatoValido('  81000403  ')).toBe(true)
   })
 
-  it('reconhece a faixa odontológica', () => {
-    expect(ehFaixaOdontologica('81000403')).toBe(true)
-    expect(ehFaixaOdontologica('10101012')).toBe(false)
-    expect(ehFaixaOdontologica('82000403')).toBe(false)
+  it('reconhece a faixa odontológica INTEIRA: 81 a 87', () => {
+    // Corrigido depois de baixar a tabela oficial: só 39 dos 370 procedimentos
+    // odontológicos começam com 81. A maioria está em 82 e 85, e a versão
+    // anterior desta checagem recusaria 331 códigos válidos.
+    for (const c of ['81000030', '82000875', '83000089', '84000198', '85100196', '86000357', '87000199']) {
+      expect(ehFaixaOdontologica(c), c).toBe(true)
+    }
+    // Fora da faixa: medicina (0x–5x) e o que passa de 87.
+    for (const c of ['10101012', '31201180', '88000001', '80000001']) {
+      expect(ehFaixaOdontologica(c), c).toBe(false)
+    }
   })
 
   it('formato válido NÃO significa código existente', () => {
@@ -53,6 +60,25 @@ describe('leitura do CSV', () => {
   it('aceita a terceira coluna de mapeamento para o código interno', () => {
     const { linhas } = lerCsvTuss('81000403;Restauração;REST-2F')
     expect(linhas[0]!.codigoInterno).toBe('REST-2F')
+  })
+
+  it('distingue DATA de código interno na terceira coluna', () => {
+    // Os dois arquivos que a clínica usa têm formatos diferentes: a tabela
+    // oficial da ANS traz `inicio_vigencia` na terceira coluna, o arquivo de
+    // mapeamento traz o código interno. Confundir os dois faria o importador
+    // tentar casar o catálogo com "2010-06-09".
+    const oficial = lerCsvTuss('81000030;Consulta odontológica;2010-06-09;').linhas[0]!
+    expect(oficial.inicioVigencia).toBe('2010-06-09')
+    expect(oficial.codigoInterno).toBeUndefined()
+
+    const mapeamento = lerCsvTuss('81000030;Consulta odontológica;CONS-001').linhas[0]!
+    expect(mapeamento.codigoInterno).toBe('CONS-001')
+    expect(mapeamento.inicioVigencia).toBeUndefined()
+  })
+
+  it('lê a quarta coluna como fim de vigência', () => {
+    const l = lerCsvTuss('81000030;X;2010-06-09;2024-12-31').linhas[0]!
+    expect(l.fimVigencia).toBe('2024-12-31')
   })
 
   it('SEPARA o que tem formato inválido em vez de importar errado', () => {

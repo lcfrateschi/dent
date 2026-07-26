@@ -101,10 +101,13 @@ um relatório verde provando invariante nenhuma.
   basta: o horário de envio já está gravado em `agendado_para`.
 - **`usuario.mfa_secret` está em texto claro.** Não é bypass de autenticação — ainda exige a
   senha — mas agrava um vazamento de banco. Cifrar exige chave fora do banco e rotação.
-- **`codigo_tuss` continua nulo, e é bloqueio real para faturar.** Código inventado gera glosa.
-  A fonte é a Tabela 22 da ANS (procedimentos odontológicos). O importador existe:
-  `npm run tuss:importar -- arquivo.csv`. Sem ele, a guia é montada mas glosada na entrada — a
-  tela avisa.
+- **`codigo_tuss`: 36 dos 49 procedimentos já têm código OFICIAL.** A faixa odontológica da
+  Tabela 22 (370 códigos, prefixos 81–87) está em `dados/tuss22-odontologia.csv`, baixada da API
+  da ANS — não editada. O mapeamento catálogo→TUSS é interpretação e vale conferir com quem
+  fatura antes do primeiro envio. Os **13 restantes ficaram em branco de propósito**: ou o
+  procedimento não existe na Tabela 22, ou existem vários candidatos e a escolha muda o valor
+  recebido. `dados/README.md` lista cada caso com os candidatos. **Não preencha por dedução** —
+  código plausível e errado é glosa que aparece semanas depois.
 - **O XML TISS NUNCA foi validado contra o XSD da ANS nem enviado a operadora real.** É XML bem
   formado (conferido por parser), com escape correto e hash de epílogo — e isso é tudo o que se
   pode afirmar. O caminho que fatura hoje é a folha de conferência, que a recepção digita no

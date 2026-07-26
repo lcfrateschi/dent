@@ -18,6 +18,9 @@ export interface LinhaTuss {
   readonly descricao: string
   /** Código interno do nosso catálogo, quando o arquivo trouxer o mapeamento. */
   readonly codigoInterno?: string
+  /** Vigência, quando o arquivo vem da tabela oficial da ANS. */
+  readonly inicioVigencia?: string
+  readonly fimVigencia?: string
 }
 
 export interface ResultadoImportacao {
@@ -32,17 +35,25 @@ export interface ResultadoImportacao {
 /**
  * Formato do código TUSS odontológico.
  *
- * Oito dígitos, e os procedimentos odontológicos ficam na faixa que começa com
- * `81`. A checagem é de FORMATO, não de existência: só a ANS sabe se um código
- * existe, e é por isso que o arquivo dela é insumo obrigatório.
+ * Oito dígitos. A checagem é de FORMATO, não de existência.
  */
 export function codigoTussTemFormatoValido(codigo: string): boolean {
   return /^\d{8}$/.test(codigo.trim())
 }
 
-/** `true` para a faixa odontológica. Fora dela é provável erro de arquivo. */
+/**
+ * `true` para a faixa odontológica da Tabela 22.
+ *
+ * A faixa é **81 a 87**, não só 81 — corrigido depois de baixar a tabela oficial:
+ * dos 370 procedimentos odontológicos, apenas 39 começam com 81. A maioria está em
+ * 82 (cirurgia, 105) e 85 (dentística, endodontia, periodontia, prótese, 137).
+ * A versão anterior desta função recusaria 331 códigos válidos.
+ *
+ * Distribuição real (contada do arquivo oficial):
+ *   81 → 39   82 → 105   83 → 9   84 → 14   85 → 137   86 → 56   87 → 10
+ */
 export function ehFaixaOdontologica(codigo: string): boolean {
-  return /^81\d{6}$/.test(codigo.trim())
+  return /^8[1-7]\d{6}$/.test(codigo.trim())
 }
 
 /**
@@ -64,7 +75,7 @@ export function lerCsvTuss(conteudo: string): {
     if (linha.length === 0) continue
 
     const campos = linha.split(';').map((c) => c.trim().replace(/^"|"$/g, ''))
-    const [primeiro, segundo, terceiro] = campos
+    const [primeiro, segundo, terceiro, quarto] = campos
 
     if (!primeiro) continue
     // Cabeçalho: primeira coluna não numérica.
@@ -79,10 +90,19 @@ export function lerCsvTuss(conteudo: string): {
       continue
     }
 
+    // A terceira coluna é ambígua entre os dois arquivos que a clínica usa:
+    //   tabela oficial da ANS → inicio_vigencia (uma data)
+    //   arquivo de mapeamento → codigo_interno (ex.: DENT-002)
+    // Data não é código interno: distinguir pelo formato evita tentar casar o
+    // catálogo com "2010-06-09" e reportar 370 itens sem correspondência.
+    const ehData = terceiro !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(terceiro)
+
     linhas.push({
       codigoTuss: primeiro,
       descricao: segundo ?? '',
-      codigoInterno: terceiro || undefined,
+      codigoInterno: ehData ? undefined : terceiro || undefined,
+      inicioVigencia: ehData ? terceiro : undefined,
+      fimVigencia: ehData ? quarto || undefined : undefined,
     })
   }
 

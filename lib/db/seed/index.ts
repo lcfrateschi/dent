@@ -40,7 +40,9 @@ async function main(): Promise<void> {
   console.log(`  dente         → ${dentes} dentes FDI (32 permanentes + 20 decíduos)`)
 
   const procedimentos = await seedProcedimentos(db)
-  console.log(`  procedimento  → ${procedimentos} procedimentos (codigo_tuss pendente, ver Fase 13)`)
+  console.log(
+    `  procedimento  → ${procedimentos} procedimentos (36 com código TUSS oficial; 13 pendentes de decisão da clínica — ver dados/README.md)`,
+  )
 
   const cadeiras = await seedCadeiras()
   console.log(`  cadeira       → ${cadeiras} cadeiras`)

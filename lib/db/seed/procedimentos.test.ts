@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { paraCentavos } from '@/lib/domain/dinheiro'
 import { exigirItemCoerente } from '@/lib/domain/itemPlano'
 import { describe, expect, it } from 'vitest'
@@ -60,9 +62,51 @@ describe('catálogo de procedimentos do seed', () => {
     }
   })
 
-  it('não traz codigo_tuss inventado — TUSS errado gera glosa', () => {
+  /**
+   * A intenção deste teste não mudou desde a Fase 1: **nenhum código TUSS
+   * inventado**. O que mudou é que agora existem códigos oficiais no seed, então
+   * a verificação deixou de ser "não tem nenhum" e passou a ser "todo código que
+   * está aqui está na tabela oficial da ANS".
+   *
+   * O arquivo é `dados/tuss22-odontologia.csv`, baixado da API da ANS — ver
+   * `dados/README.md` para a procedência.
+   */
+  it('todo codigo_tuss do seed está na tabela OFICIAL da ANS', () => {
+    const oficiais = new Set(
+      readFileSync(join(process.cwd(), 'dados/tuss22-odontologia.csv'), 'utf8')
+        .split(/\r?\n/)
+        .slice(1)
+        .map((l) => l.split(';')[0]?.replace('\uFEFF', '').trim())
+        .filter((c): c is string => !!c && /^\d{8}$/.test(c)),
+    )
+    expect(oficiais.size, 'a tabela oficial foi carregada').toBe(370)
+
+    let comCodigo = 0
     for (const p of catalogoProcedimentos) {
-      expect(p, `"${p.nome}" não deveria ter codigo_tuss no seed`).not.toHaveProperty('codigoTuss')
+      const codigo = (p as { codigoTuss?: string }).codigoTuss
+      if (codigo === undefined) continue
+      comCodigo++
+      expect(oficiais.has(codigo), `"${p.nome}" usa ${codigo}, que NÃO está na tabela oficial`).toBe(
+        true,
+      )
+      // Faixa odontológica: 81 a 87. Fora dela seria código de medicina.
+      expect(/^8[1-7]\d{6}$/.test(codigo), `${codigo} fora da faixa odontológica`).toBe(true)
+    }
+    expect(comCodigo, 'quantos procedimentos já têm código oficial').toBe(36)
+  })
+
+  it('o que NÃO tem código é por decisão, não por esquecimento', () => {
+    // Os 13 restantes ou não existem na Tabela 22, ou têm vários candidatos e a
+    // escolha muda o valor recebido. `dados/README.md` lista cada caso com os
+    // candidatos oficiais. Escolher no lugar da clínica geraria glosa em nome dela.
+    const semCodigo = catalogoProcedimentos.filter(
+      (p) => (p as { codigoTuss?: string }).codigoTuss === undefined,
+    )
+    expect(semCodigo).toHaveLength(13)
+
+    const doc = readFileSync(join(process.cwd(), 'dados/README.md'), 'utf8')
+    for (const p of semCodigo) {
+      expect(doc, `${p.codigo} sem código e sem explicação em dados/README.md`).toContain(p.codigo)
     }
   })
 

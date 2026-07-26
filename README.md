@@ -263,10 +263,16 @@ envio, retorno com glosa, recurso e **conciliação de repasse item a item**.
 (validado por parser), mas **nunca foi conferida contra o XSD oficial da ANS nem
 enviada a uma operadora real**. Não conte com ela para faturar.
 
-**Pendente de insumo** — o **código TUSS**. `procedimento.codigo_tuss` é nulo no
-seed *de propósito*: código inventado gera glosa, e glosa aparece semanas depois,
-quando o paciente já foi embora. A fonte é a Tabela 22 da ANS e o importador está
-pronto para recebê-la.
+**Código TUSS — 36 dos 49 procedimentos já saem do seed com código oficial.** A
+faixa odontológica da Tabela 22 da ANS (370 códigos, prefixos 81 a 87) está em
+`dados/tuss22-odontologia.csv`, baixada da API oficial e não editada.
+
+Os **13 que faltam continuam em branco de propósito**, e não por esquecimento: em 5
+casos o procedimento simplesmente não tem código na Tabela 22 (consulta de retorno,
+frenectomia, orientação de higiene…), e nos outros 8 existem vários candidatos cujo
+valor recebido é diferente — "coroa provisória" tem código com pino e sem pino.
+`dados/README.md` lista cada um com os candidatos oficiais e o motivo. Preencher por
+dedução seria glosa em nome da clínica.
 
 O caminho que funciona hoje é a **folha de conferência** (`/api/convenios/guias/<id>/conferencia`):
 a recepção lê dela e digita no portal da operadora — que é como a maioria das
@@ -415,5 +421,5 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 10 — Imagens e documentos | pronta (armazenamento em disco; S3/R2 pendente de bucket) |
 | 11 — Painel, relatórios e auditoria | pronta |
 | 12 — Portal do paciente | pronta, com revisão de segurança (29 verificações adversariais) |
-| 13 — Convênios / TISS | controle interno pronto; **XML e código TUSS pendentes** (ver abaixo) |
+| 13 — Convênios / TISS | controle interno pronto; TUSS oficial em 36/49; **XML não validado** (ver abaixo) |
 | 14 | ver `ROADMAP.md` |
