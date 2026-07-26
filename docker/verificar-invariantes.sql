@@ -856,6 +856,141 @@ SELECT espera_erro('documento: excluir paciente que tem documento', ARRAY[$$
   DELETE FROM paciente WHERE id='33333333-3333-3333-3333-333333333333'
 $$]);
 
+-- ── 12. Portal do paciente ──────────────────────────────────────────────────
+--
+-- O realm exposto: o paciente entra pela internet, sem MFA, de um celular que a
+-- clínica não controla. As travas aqui são o que impede um convite eterno e uma
+-- sessão que não morre.
+-- ────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF to_regclass('paciente_sessao') IS NULL THEN
+    RAISE EXCEPTION 'tabela paciente_sessao não existe — rode as migrations 0012/0013';
+  END IF;
+END $$;
+
+SET CONSTRAINTS ALL DEFERRED;
+
+-- Segundo paciente criado FORA de qualquer `espera_erro`.
+--
+-- Isto não é detalhe: `espera_erro` roda num sub-bloco com EXCEPTION, e a exceção
+-- desfaz tudo que o bloco fez — inclusive um INSERT auxiliar. Criar o paciente lá
+-- dentro fazia o caso "sessão trocar de conta" falhar no INSERT em vez de no
+-- UPDATE, e ele "passava" sem testar a trigger. Mesma armadilha do caso 59.
+INSERT INTO paciente (id, nome, data_nascimento) VALUES
+  ('33333333-3333-3333-3333-333333333335', 'Paciente Portal 2', '1992-02-02');
+
+SELECT espera_ok('portal: criar conta sem senha (aguardando primeiro acesso)', ARRAY[$$
+  INSERT INTO paciente_conta (id, paciente_id, email, token_convite_hash, token_convite_expira_em)
+  VALUES ('aaaa1111-1111-4111-8111-111111111111',
+          '33333333-3333-3333-3333-333333333333',
+          'portal-teste@local', repeat('f', 64), now() + interval '7 days')
+$$]);
+
+SELECT espera_erro('portal: convite sem prazo de validade', ARRAY[$$
+  UPDATE paciente_conta SET token_convite_expira_em = NULL
+   WHERE id='aaaa1111-1111-4111-8111-111111111111'
+$$]);
+
+SELECT espera_erro('portal: senha sem carimbo de quando foi definida', ARRAY[$$
+  UPDATE paciente_conta SET senha_hash='x'
+   WHERE id='aaaa1111-1111-4111-8111-111111111111'
+$$]);
+
+SELECT espera_erro('portal: definir senha DEIXANDO o convite válido', ARRAY[$$
+  UPDATE paciente_conta SET senha_hash='x', senha_definida_em=now()
+   WHERE id='aaaa1111-1111-4111-8111-111111111111'
+$$]);
+
+SELECT espera_ok('portal: definir senha CONSUMINDO o convite', ARRAY[$$
+  UPDATE paciente_conta
+     SET senha_hash='x', senha_definida_em=now(),
+         token_convite_hash=NULL, token_convite_expira_em=NULL
+   WHERE id='aaaa1111-1111-4111-8111-111111111111'
+$$]);
+
+SELECT espera_ok('portal: abrir sessão', ARRAY[$$
+  INSERT INTO paciente_sessao (id, conta_id, token_hash, expira_em)
+  VALUES ('bbbb2222-2222-4222-8222-222222222222',
+          'aaaa1111-1111-4111-8111-111111111111',
+          repeat('a', 64), now() + interval '12 hours')
+$$]);
+
+SELECT espera_erro('portal: sessão que expira antes de nascer', ARRAY[$$
+  INSERT INTO paciente_sessao (conta_id, token_hash, expira_em)
+  VALUES ('aaaa1111-1111-4111-8111-111111111111', repeat('b', 64), now() - interval '1 hour')
+$$]);
+
+SELECT espera_erro('portal: DUAS sessões com o mesmo token', ARRAY[$$
+  INSERT INTO paciente_sessao (conta_id, token_hash, expira_em)
+  VALUES ('aaaa1111-1111-4111-8111-111111111111', repeat('a', 64), now() + interval '1 hour')
+$$]);
+
+SELECT espera_ok('portal: registrar uso da sessão', ARRAY[$$
+  UPDATE paciente_sessao SET ultimo_uso_em=now()
+   WHERE id='bbbb2222-2222-4222-8222-222222222222'
+$$]);
+
+SELECT espera_erro('portal: ESTICAR o prazo da sessão', ARRAY[$$
+  UPDATE paciente_sessao SET expira_em=now() + interval '30 days'
+   WHERE id='bbbb2222-2222-4222-8222-222222222222'
+$$]);
+
+-- A segunda conta existe de verdade antes do caso: senão a falha viria do INSERT
+-- e a trigger de troca de conta não seria exercitada.
+INSERT INTO paciente_conta (id, paciente_id, email)
+VALUES ('aaaa1111-1111-4111-8111-111111111112',
+        '33333333-3333-3333-3333-333333333335', 'outro-portal@local');
+
+SELECT espera_erro('portal: sessão trocar de conta (entregaria a sessão a outro paciente)', ARRAY[$$
+  UPDATE paciente_sessao SET conta_id='aaaa1111-1111-4111-8111-111111111112'
+   WHERE id='bbbb2222-2222-4222-8222-222222222222'
+$$]);
+
+SELECT espera_erro('portal: trocar o token de uma sessão existente', ARRAY[$$
+  UPDATE paciente_sessao SET token_hash=repeat('c', 64)
+   WHERE id='bbbb2222-2222-4222-8222-222222222222'
+$$]);
+
+SELECT espera_ok('portal: revogar sessão', ARRAY[$$
+  UPDATE paciente_sessao SET revogada_em=now()
+   WHERE id='bbbb2222-2222-4222-8222-222222222222'
+$$]);
+
+SELECT espera_erro('portal: RESSUSCITAR sessão revogada', ARRAY[$$
+  UPDATE paciente_sessao SET revogada_em=NULL
+   WHERE id='bbbb2222-2222-4222-8222-222222222222'
+$$]);
+
+SELECT espera_erro('portal: dois pacientes com o mesmo e-mail de login', ARRAY[$$
+  INSERT INTO paciente_conta (paciente_id, email)
+  VALUES ('33333333-3333-3333-3333-333333333335', 'PORTAL-TESTE@local')
+$$]);
+
+SELECT espera_erro('portal: duas contas para o mesmo paciente', ARRAY[$$
+  INSERT INTO paciente_conta (paciente_id, email)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'terceira-conta@local')
+$$]);
+
+-- A prova estrutural: os realms não se cruzam. É a decisão 2 do CLAUDE.md
+-- verificada por consulta ao catálogo, não por leitura de código.
+SELECT espera_ok('portal: NENHUMA FK entre o realm do paciente e "usuario"', ARRAY[$$
+  DO $x$
+  DECLARE n int;
+  BEGIN
+    SELECT count(*) INTO n
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.constraint_column_usage ccu
+        ON ccu.constraint_name = tc.constraint_name
+     WHERE tc.constraint_type = 'FOREIGN KEY'
+       AND tc.table_name IN ('paciente_sessao', 'paciente_conta')
+       AND ccu.table_name = 'usuario';
+    IF n > 0 THEN
+      RAISE EXCEPTION 'existe FK entre o realm do paciente e usuario (%)', n;
+    END IF;
+  END $x$
+$$]);
+
 -- ── Relatório ───────────────────────────────────────────────────────────────
 \echo ''
 \echo '════════════════════════════════════════════════════════════════════════'

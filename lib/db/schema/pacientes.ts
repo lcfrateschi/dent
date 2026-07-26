@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import {
   type AnyPgColumn,
   boolean,
+  check,
   date,
   index,
   pgTable,
@@ -60,8 +61,16 @@ export const paciente = pgTable(
 )
 
 /**
- * Credencial do portal do paciente (Fase 12).
- * Tabela e sessão distintas de `usuario` por decisão de segurança — CLAUDE.md, decisão 2.
+ * Credencial do portal do paciente.
+ *
+ * Tabela e sessão distintas de `usuario` por decisão de segurança — CLAUDE.md,
+ * decisão 2. **Não existe coluna que ligue esta tabela a `usuario`**, e isso é
+ * proposital: nenhuma consulta deve poder ir de um realm ao outro por join.
+ *
+ * `senha_hash` é NULA até o paciente definir a senha. O acesso começa por um
+ * convite de uso único que a recepção entrega — não há envio de e-mail no sistema,
+ * e inventar uma senha para o paciente seria pior: ela circularia por WhatsApp e
+ * ficaria válida.
  */
 export const pacienteConta = pgTable(
   'paciente_conta',
@@ -72,13 +81,79 @@ export const pacienteConta = pgTable(
       .unique()
       .references(() => paciente.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
-    senhaHash: text('senha_hash').notNull(),
+    /** Nulo até o primeiro acesso. Ver `token_convite_hash`. */
+    senhaHash: text('senha_hash'),
+    senhaDefinidaEm: timestamp('senha_definida_em', { withTimezone: true }),
+    /**
+     * SHA-256 do convite de primeiro acesso. **Nunca o token em claro**: quem lê
+     * o banco não consegue entrar na conta de ninguém.
+     */
+    tokenConviteHash: varchar('token_convite_hash', { length: 64 }),
+    tokenConviteExpiraEm: timestamp('token_convite_expira_em', { withTimezone: true }),
+    /** Bloqueio temporário por tentativas erradas de senha. */
+    bloqueadoAte: timestamp('bloqueado_ate', { withTimezone: true }),
     emailVerificadoEm: timestamp('email_verificado_em', { withTimezone: true }),
     ativo: boolean('ativo').notNull().default(true),
     ultimoLoginEm: timestamp('ultimo_login_em', { withTimezone: true }),
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+    atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('paciente_conta_email_uk').on(sql`lower(${t.email})`)],
+  (t) => [
+    uniqueIndex('paciente_conta_email_uk').on(sql`lower(${t.email})`),
+    // Convite pendente é encontrado pelo hash na hora de validar.
+    index('paciente_conta_convite_idx')
+      .on(t.tokenConviteHash)
+      .where(sql`${t.tokenConviteHash} is not null`),
+    check(
+      'paciente_conta_convite_tem_prazo',
+      sql`${t.tokenConviteHash} is null or ${t.tokenConviteExpiraEm} is not null`,
+    ),
+    check(
+      'paciente_conta_senha_tem_carimbo',
+      sql`(${t.senhaHash} is null) = (${t.senhaDefinidaEm} is null)`,
+    ),
+  ],
+)
+
+/**
+ * Sessão do portal.
+ *
+ * **Token opaco no banco, não JWT.** A escolha é deliberada e é o ponto de
+ * segurança mais consequente desta fase:
+ *
+ * - **Dá para revogar.** Se o paciente perde o celular, ou a clínica precisa
+ *   cortar o acesso, apagar a linha encerra a sessão na hora. Um JWT assinado
+ *   vale até expirar, e não há como chamá-lo de volta.
+ * - **O cookie não vale nada sem o banco.** Só o SHA-256 do token é guardado:
+ *   quem lê a tabela não consegue montar um cookie válido.
+ * - **Cada uso deixa rastro.** `ultimo_uso_em` e `ip` respondem "de onde essa
+ *   conta foi acessada", que é a pergunta que aparece depois de uma suspeita.
+ *
+ * O preço é uma consulta por requisição. Para um portal de consultório, com
+ * dezenas de acessos por dia, isso não é custo — é o que compra a revogação.
+ */
+export const pacienteSessao = pgTable(
+  'paciente_sessao',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    contaId: uuid('conta_id')
+      .notNull()
+      .references(() => pacienteConta.id, { onDelete: 'cascade' }),
+    /** SHA-256 do token que está no cookie. O token em si nunca é gravado. */
+    tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
+    criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+    expiraEm: timestamp('expira_em', { withTimezone: true }).notNull(),
+    ultimoUsoEm: timestamp('ultimo_uso_em', { withTimezone: true }).notNull().defaultNow(),
+    revogadaEm: timestamp('revogada_em', { withTimezone: true }),
+    /** Quem revogou, quando foi a clínica. Nulo = o próprio paciente saiu. */
+    revogadaPorUsuarioId: uuid('revogada_por_usuario_id'),
+    ip: varchar('ip', { length: 45 }),
+    userAgent: text('user_agent'),
+  },
+  (t) => [
+    index('paciente_sessao_conta_idx').on(t.contaId, t.criadoEm),
+    check('paciente_sessao_prazo_futuro', sql`${t.expiraEm} > ${t.criadoEm}`),
+  ],
 )
 
 /**

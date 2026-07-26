@@ -59,7 +59,7 @@ npm run docker:up        # sobe tudo
 npm run docker:logs      # segue o log do app
 npm run docker:down      # para
 npm run docker:reset     # apaga o volume e recria o banco do zero
-npm run db:verificar     # prova as invariantes do banco (102 casos)
+npm run db:verificar     # prova as invariantes do banco (119 casos)
 ```
 
 Variante de produção (imagem enxuta, `output: standalone`, roda sem root):
@@ -84,9 +84,9 @@ npm run dev
 ## Testes
 
 ```bash
-npm test               # 708 testes (Vitest, sem banco)
+npm test               # 751 testes (Vitest, sem banco)
 npm run typecheck
-npm run db:verificar   # 102 invariantes no banco (precisa do compose de pé)
+npm run db:verificar   # 119 invariantes no banco (precisa do compose de pé)
 ```
 
 Os testes de domínio não tocam o banco de propósito: são as regras puras
@@ -193,6 +193,56 @@ auditoria.
 Exportação em CSV registra um evento `exportacao` próprio: quem exporta leva o
 dado embora, e a LGPD separa isso de leitura com razão.
 
+## Portal do paciente (Fase 12)
+
+```bash
+# revisão de segurança adversarial — 29 tentativas de ataque, todas bloqueadas
+docker compose exec app npm run portal:seguranca
+```
+
+O paciente entra em `/meu` e vê **só o que é dele**: consultas (com botão de
+confirmar), orçamentos (com aprovar/recusar), parcelas, documentos e os
+consentimentos que deu — podendo revogar sozinho, como a LGPD exige.
+
+A defesa contra IDOR é **estrutural, não disciplinar**: toda função de
+`lib/portal/consultas.ts` recebe `SessaoPortal` e filtra por `sessao.pacienteId`, e
+**nenhuma aceita `pacienteId` como parâmetro**. Não existe assinatura de função em
+que um id vindo da URL possa entrar. A única tela que recebe id (um orçamento
+específico) confere o dono na mesma consulta.
+
+Os dois realms não se cruzam:
+
+| | Staff | Portal |
+|---|---|---|
+| Tabela | `usuario` | `paciente_conta` |
+| Cookie | `authjs.session-token` | `dent_portal` |
+| Mecanismo | Auth.js + JWT | token opaco no banco |
+| Tipo no código | `Ator` | `SessaoPortal` (incompatível) |
+| Segundo fator | obrigatório | não — compensado por bloqueio e sessão curta |
+
+Não há segredo compartilhado entre eles, e `drizzle/0013` **falha o deploy** se
+alguém criar uma FK entre o realm do paciente e `usuario`.
+
+Decisões que valem saber:
+
+- **Sessão de 12 horas, token no banco, revogável.** JWT vale até expirar e não
+  volta atrás; aqui a clínica corta o acesso e ele cai na requisição seguinte.
+- **Primeiro acesso por convite de uso único**, não senha temporária: senha
+  temporária circula por WhatsApp e continua válida. O convite morre ao ser usado
+  (trigger) e expira em 7 dias. O código aparece **uma vez** na ficha — depois só o
+  hash fica no banco.
+- **Sem MFA para o paciente**, por decisão: exigir autenticador de quem entra três
+  vezes por ano produz abandono, não segurança. O que compensa é o bloqueio
+  crescente (1, 5, 15, 60 min), a sessão curta e a revogação.
+- **Bloqueio não é permanente.** Trancar a conta para sempre depois de N erros
+  transformaria o ataque em negação de serviço contra o paciente.
+- **O portal não mostra evolução clínica nem radiografia.** A evolução é escrita
+  em linguagem técnica para outro profissional; imagem sem laudo gera interpretação
+  errada. Histórico de atendimentos sim; a íntegra do prontuário é pedida na
+  clínica, com exportação auditada.
+- **"Não vou poder ir" não cancela**: registra o aviso para a recepção remarcar. Um
+  toque errado no celular não pode custar o horário do paciente.
+
 ## Onde está o quê
 
 ```
@@ -205,6 +255,8 @@ app/
   api/whatsapp/    webhook da Meta — pública, autenticada por HMAC
   api/documentos/  download autorizado e auditado de anexo do prontuário
   api/relatorios/  exportação CSV, com a exportação registrada na trilha
+  api/meu/         rotas do PORTAL — autorizam por sessão de paciente
+  (portal)/        realm do paciente: /meu/... , nada compartilhado com o staff
 middleware.ts      guarda de rotas + trava de MFA
 components/
   agenda/          grade semanal e estilos de status
@@ -224,6 +276,7 @@ lib/
   armazenamento/   provedor em disco e S3/R2, com SigV4 escrito à mão
   documentos/      anexo, emissão de atestado/receita e escritor de PDF
   relatorios/      agregações do painel e leitura da trilha de auditoria
+  portal/          sessão, consultas e ações do paciente — sempre escopadas
   odontograma/     tradução item_plano/execucao ↔ estado das faces
   pacientes/       schema Zod, consultas e server actions
   db/schema/       29 tabelas Drizzle, uma área do domínio por arquivo
@@ -235,6 +288,7 @@ drizzle/
   0004_orcamento_congelado.sql  documento comercial imutável depois de enviado
   0009_mensageria_travas.sql    idempotência do envio e append-only das respostas
   0011_documento_travas.sql     anexo imutável, remoção lógica com autor
+  0013_portal_travas.sql        convite de uso único, sessão que não ressuscita
 docker/
   migrate.sh                 migrate + seed
   verificar-invariantes.sql  prova das invariantes
@@ -281,6 +335,11 @@ período da agenda, ambas com `aria-label`.
 | CID só sai no atestado com autorização do paciente | `lib/domain/impressos.ts` |
 | Consultar a auditoria também é auditado | `lib/relatorios/auditoria.ts` |
 | CSV sem injeção de fórmula em planilha | `lib/domain/csv.ts` |
+| Portal: consulta sempre escopada pela sessão | `lib/portal/consultas.ts` — nenhuma aceita `pacienteId` |
+| Portal: cookie e mecanismo próprios | `dent_portal`, token opaco no banco, revogável |
+| Realms sem FK entre si | verificado no catálogo por `drizzle/0013` e pela invariante 119 |
+| Convite de primeiro acesso é de uso único | trigger em `drizzle/0013` |
+| Login do portal não revela se a conta existe | `MENSAGEM_CREDENCIAL_INVALIDA` |
 | Tokens do código = tokens do catálogo | `lib/ui/tokens.test.ts` |
 
 As três separações de acesso pedidas pela clínica, todas cobertas por teste:
@@ -291,7 +350,7 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 
 | Fase | Situação |
 |---|---|
-| 1 — Domínio e banco | pronta, verificada em Postgres real (102 invariantes) |
+| 1 — Domínio e banco | pronta, verificada em Postgres real (119 invariantes) |
 | 2 — Design system | tokens, componentes base, odontograma pronto |
 | 3 — Esqueleto, MFA, RBAC, CRUD de paciente | pronta |
 | 4 — Agenda | pronta |
@@ -302,4 +361,5 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 9 — Confirmação por WhatsApp | pronta (provedor simulado; Meta pendente de conta) |
 | 10 — Imagens e documentos | pronta (armazenamento em disco; S3/R2 pendente de bucket) |
 | 11 — Painel, relatórios e auditoria | pronta |
-| 12+ | ver `ROADMAP.md` |
+| 12 — Portal do paciente | pronta, com revisão de segurança (29 verificações adversariais) |
+| 13+ | ver `ROADMAP.md` |

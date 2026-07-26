@@ -117,6 +117,9 @@ export interface AvaliacaoSenha {
 
 const MIN_CARACTERES = 12
 
+/** Mínimo para o paciente. Ver `avaliarSenhaPaciente` para o porquê da diferença. */
+const MIN_CARACTERES_PACIENTE = 10
+
 /**
  * Política de senha para staff.
  *
@@ -124,11 +127,15 @@ const MIN_CARACTERES = 12
  * melhor do que `S3nh@!`. Exigir símbolo obrigatório empurra a pessoa para
  * padrões previsíveis e para o post-it no monitor.
  */
-export function avaliarSenha(senha: string, contexto: readonly string[] = []): AvaliacaoSenha {
+export function avaliarSenha(
+  senha: string,
+  contexto: readonly string[] = [],
+  minimo: number = MIN_CARACTERES,
+): AvaliacaoSenha {
   const problemas: string[] = []
 
-  if (senha.length < MIN_CARACTERES) {
-    problemas.push(`Use pelo menos ${MIN_CARACTERES} caracteres.`)
+  if (senha.length < minimo) {
+    problemas.push(`Use pelo menos ${minimo} caracteres.`)
   }
   if (/^\s|\s$/.test(senha)) {
     problemas.push('Não comece nem termine com espaço.')
@@ -155,6 +162,73 @@ export function avaliarSenha(senha: string, contexto: readonly string[] = []): A
 
   if (palavras.some((p) => minuscula.includes(p))) {
     problemas.push('Não use seu nome ou e-mail na senha.')
+  }
+
+  return { aceita: problemas.length === 0, problemas }
+}
+
+/**
+ * Política de senha para o PACIENTE.
+ *
+ * Duas diferenças em relação ao staff, e as duas são decisões, não descuido:
+ *
+ * 1. **Mínimo de 10 em vez de 12.** O portal não tem segundo fator e o paciente
+ *    não tem suporte de TI: política pesada demais produz o pior resultado
+ *    possível na prática — o paciente liga, não consegue, e alguém da recepção
+ *    acaba anotando a senha dele num papel. O que sustenta os 10 caracteres é o
+ *    bloqueio por tentativas (`lib/domain/bloqueio.ts`) e a sessão curta e
+ *    revogável, não a esperança de que ele escolha bem.
+ *
+ * 2. **A data de nascimento entra no contexto proibido.** É o primeiro palpite
+ *    contra um paciente — `12031988`, `120388`, `1988` —, e o staff não tem esse
+ *    problema porque a data de nascimento dele não está no cadastro que o
+ *    atacante já viu. O CPF entra pelo mesmo motivo.
+ */
+export function avaliarSenhaPaciente(
+  senha: string,
+  dados: {
+    readonly nome?: string
+    readonly email?: string
+    readonly nascimento?: string
+    readonly cpf?: string
+  } = {},
+): AvaliacaoSenha {
+  const contexto: string[] = []
+  if (dados.nome) contexto.push(dados.nome)
+  if (dados.email) contexto.push(dados.email.split('@')[0]!)
+
+  const base = avaliarSenha(senha, contexto, MIN_CARACTERES_PACIENTE)
+  const problemas = [...base.problemas]
+
+  const soDigitos = senha.replace(/\D/g, '')
+
+  if (dados.nascimento) {
+    // 'YYYY-MM-DD' → as formas que uma pessoa realmente digita.
+    const [ano, mes, dia] = dados.nascimento.split('-')
+    if (ano && mes && dia) {
+      const formas = [
+        `${dia}${mes}${ano}`,
+        `${dia}${mes}${ano.slice(2)}`,
+        `${ano}${mes}${dia}`,
+        `${dia}/${mes}/${ano}`,
+        ano,
+      ]
+      if (formas.some((f) => f.length >= 4 && senha.includes(f))) {
+        problemas.push('Não use sua data de nascimento.')
+      }
+    }
+  }
+
+  if (dados.cpf) {
+    const cpf = dados.cpf.replace(/\D/g, '')
+    if (cpf.length === 11 && soDigitos.length >= 6 && cpf.includes(soDigitos)) {
+      problemas.push('Não use seu CPF.')
+    }
+  }
+
+  // Só dígito é sempre fraco, e é o formato que o paciente tende a escolher.
+  if (/^\d+$/.test(senha)) {
+    problemas.push('Use letras também, não só números.')
   }
 
   return { aceita: problemas.length === 0, problemas }

@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Icone } from '@/components/ui/Icone'
+import { AcessoAoPortal } from '@/components/paciente/AcessoAoPortal'
 import { ConsentimentoWhatsapp } from '@/components/paciente/ConsentimentoWhatsapp'
 import { FaixaAlertas } from '@/components/paciente/FaixaAlertas'
 import { pode } from '@/lib/authz/politicas'
@@ -13,6 +14,7 @@ import {
   VERSAO_TERMO_WHATSAPP,
   temConsentimentoWhatsapp,
 } from '@/lib/mensageria/consentimento'
+import { situacaoDoAcesso } from '@/lib/pacientes/acessoPortal'
 import { acharPaciente, acharPacienteResumo, alertasDoPaciente } from '@/lib/pacientes/consultas'
 import type { Metadata } from 'next'
 import Link from 'next/link'
@@ -29,11 +31,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const p = await acharPaciente(ator, id)
   if (!p) notFound()
 
-  const [alertas, responsavel, autorizadoWhatsapp] = await Promise.all([
+  const [alertas, responsavel, autorizadoWhatsapp, acessoPortal] = await Promise.all([
     // Recepção também vê alertas: é segurança do paciente na cadeira.
     pode(ator.perfil, 'alerta_clinico', 'ler') ? alertasDoPaciente(id) : Promise.resolve([]),
     p.responsavelLegalId ? acharPacienteResumo(p.responsavelLegalId) : Promise.resolve(null),
     temConsentimentoWhatsapp(id),
+    situacaoDoAcesso(id),
   ])
 
   const hoje = new Date().toISOString().slice(0, 10)
@@ -170,6 +173,34 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           </CardBody>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader
+          titulo="Portal do paciente"
+          descricao="Onde o paciente vê consultas, orçamentos e pagamentos — só os dele."
+        />
+        <CardBody>
+          <AcessoAoPortal
+            pacienteId={p.id}
+            emailSugerido={p.email}
+            podeEditar={pode(ator.perfil, 'paciente', 'editar')}
+            situacao={
+              acessoPortal
+                ? {
+                    email: acessoPortal.email,
+                    ativo: acessoPortal.ativo,
+                    senhaDefinida: acessoPortal.senhaDefinidaEm !== null,
+                    temConvitePendente: acessoPortal.temConvitePendente,
+                    conviteExpiraEmIso: acessoPortal.tokenConviteExpiraEm?.toISOString() ?? null,
+                    ultimoLoginIso: acessoPortal.ultimoLoginEm?.toISOString() ?? null,
+                    bloqueadoAteIso: acessoPortal.bloqueadoAte?.toISOString() ?? null,
+                    sessoesAbertas: acessoPortal.sessoesAbertas,
+                  }
+                : null
+            }
+          />
+        </CardBody>
+      </Card>
 
       <Card>
         <CardHeader

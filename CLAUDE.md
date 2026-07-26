@@ -10,6 +10,14 @@ Ver `ROADMAP.md` para as fases e `GLOSSARIO.md` para a linguagem do domínio.
 2. **Dois realms de autenticação.** Staff (`usuario`) e paciente (`paciente_conta`) são
    tabelas e sessões separadas. **Nunca compartilhe uma query entre staff e portal** — é
    exatamente ali que nasce o IDOR que expõe o prontuário do vizinho.
+
+   Implementado na Fase 12, e a separação é concreta: cookies diferentes
+   (`authjs.session-token` × `dent_portal`), mecanismos diferentes (JWT × token opaco no
+   banco), tipos incompatíveis (`Ator` × `SessaoPortal`) e **nenhuma FK** entre os realms —
+   `drizzle/0013` falha o deploy se alguém criar uma. Toda função de `lib/portal/consultas.ts`
+   filtra por `sessao.pacienteId` e **nenhuma aceita `pacienteId` como parâmetro**: a defesa
+   contra IDOR é estrutural, não disciplinar. Rodar `npm run portal:seguranca` depois de
+   qualquer mexida no portal.
 3. **`evolucao` é append-only.** Sem `UPDATE`, sem `DELETE` — garantido por trigger no banco,
    não por disciplina no código. Corrigir = inserir nova evolução com `retifica_id` apontando
    para a anterior. Exigência do CFO; guarda mínima de 20 anos.
@@ -30,7 +38,7 @@ Ver `ROADMAP.md` para as fases e `GLOSSARIO.md` para a linguagem do domínio.
 | Testes | Vitest | 1 |
 | Front + Back | Next.js 15 App Router | 3 |
 | UI | Tailwind + shadcn/ui | 2 |
-| Auth | Auth.js, MFA obrigatório para staff | 3 |
+| Auth | Auth.js + MFA para staff; sessão opaca no banco para o portal | 3 / 12 |
 | Anexos | Disco (padrão) ou S3/R2, bucket privado; servidos pela aplicação | 10 |
 | WhatsApp | Meta Cloud API oficial | 9 |
 
@@ -66,7 +74,7 @@ Ele desconhece as EXCLUDE constraints e os triggers de `drizzle/0001_constraints
 derrubá-los silenciosamente — junto com o append-only do prontuário. O script foi removido do
 `package.json` de propósito. Use `db:generate` + `db:migrate`.
 
-Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 102 casos que provam
+Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 119 casos que provam
 as invariantes contra um Postgres real. O script **falha na hora** se uma tabela esperada não
 existir — um `espera_erro` com a tabela ausente "passa" pelo motivo errado, e isso já produziu
 um relatório verde provando invariante nenhuma.
@@ -121,6 +129,20 @@ um relatório verde provando invariante nenhuma.
   horário e fica FORA da base da taxa de falta.
 - **A mensagem de WhatsApp não carrega dado clínico.** Só nome, profissional, data e hora — a
   tela do celular do paciente é lida por outras pessoas. Ver `lib/domain/textoMensagem.ts`.
+- **O portal do paciente não tem MFA, por decisão.** Exigir autenticador de quem entra três
+  vezes por ano produz abandono, não segurança. O que compensa: bloqueio crescente por
+  tentativas (`lib/domain/bloqueio.ts`), sessão de 12 h e revogação imediata. Se um dia a
+  clínica quiser MFA opcional para o paciente, o lugar é `lib/portal/sessao.ts`.
+- **Bloqueio de login do paciente NUNCA é permanente.** Trancar a conta para sempre depois
+  de N erros transforma o ataque em negação de serviço: quem sabe o e-mail do paciente o
+  tranca fora do portal. A escada para em 60 minutos de propósito.
+- **O portal não mostra evolução clínica nem radiografia.** Histórico de atendimentos sim.
+  A íntegra do prontuário é direito do paciente (CFO) e é pedida na clínica, com exportação
+  auditada — evolução é escrita para outro profissional, e imagem sem laudo gera
+  interpretação errada.
+- **"Não vou poder ir" no portal NÃO cancela o agendamento.** Registra o aviso e a recepção
+  resolve. Um toque errado no celular não pode custar o horário do paciente, e a clínica
+  precisa saber para remarcar.
 - **Anexo do prontuário NÃO é servido por URL assinada.** Os bytes passam pela
   rota `/api/documentos/[id]`, que autoriza e audita cada acesso. URL assinada é
   encaminhável: quem recebe o link vê a radiografia sem sessão e sem deixar

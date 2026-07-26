@@ -131,6 +131,17 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **"—" numa taxa** | Não há base para calcular. **Diferente de 0%.** |
 | **"do zero"** | Variação a partir de base zero. Não é "+100%" nem "+∞%". |
 
+## Portal do paciente
+
+| Termo | Definição |
+|---|---|
+| **Realm** | Domínio de autenticação. São dois e não se cruzam: staff (`usuario`) e paciente (`paciente_conta`), com cookies, mecanismos e tipos diferentes. |
+| **Convite** | Código de uso único para o primeiro acesso, entregue pela recepção. Vale 7 dias, morre ao ser usado, e aparece **uma vez só** na tela — o banco guarda apenas o hash. |
+| **Sessão do portal** | Token aleatório no cookie cujo SHA-256 fica no banco. Dura 12 h, é revogável e não estica o próprio prazo. |
+| **Revogar acesso** | Desativa a conta **e encerra as sessões abertas na hora**. Só desativar deixaria quem está logado continuar até o fim do prazo. |
+| **IDOR** | Ler dado de outro trocando um id na URL. No portal é impossível por construção: nenhuma consulta aceita `pacienteId` — ele vem sempre da sessão. |
+| **Bloqueio por tentativas** | Atraso crescente (1, 5, 15, 60 min) depois de 3 erros. Nunca permanente: bloqueio eterno seria negação de serviço contra o paciente. |
+
 ## LGPD
 
 | Termo | Definição |

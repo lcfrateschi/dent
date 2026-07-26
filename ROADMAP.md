@@ -153,7 +153,7 @@ Depois de pronto, cada módulo seguinte é repetição de um padrão já provado
 | | **↑ MVP interno operável** | **~14** | |
 | 10 | Imagens e documentos | 1,5 | ✅ pronta. Radiografias, antes/depois, atestado, receita, PDF do orçamento. Disco por padrão; S3/R2 pendente de bucket |
 | 11 | Dashboard e relatórios | 1,5 | ✅ pronta. Caixa e produção separados, ocupação em duas medidas, falta vs cancelamento, efeito da confirmação, tela de auditoria, CSV |
-| 12 | Portal do paciente | 2,5 | Realm próprio. Ver agenda, orçamento, histórico. **Security review obrigatória** |
+| 12 | Portal do paciente | 2,5 | ✅ pronta. Realm próprio, sessão revogável, convite de uso único. **Security review feita**: 29 verificações adversariais, `npm run portal:seguranca` |
 | 13 | Convênios / TISS | 3–4 | Guias, glosa, conciliação de repasse, tabela ANS |
 | 14 | Estoque | 1 | Materiais, lote, validade, alerta de mínimo |
 | | **Produto completo** | **~24** | |
