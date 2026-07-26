@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "plano_um_ativo_por_paciente" ON "plano_tratamento" USING btree ("paciente_id") WHERE "plano_tratamento"."status" = 'ativo';--> statement-breakpoint
+CREATE INDEX "orcamento_status_idx" ON "orcamento" USING btree ("status","validade_ate");

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import {
   check,
   index,
+  uniqueIndex,
   numeric,
   pgTable,
   smallint,
@@ -38,7 +39,16 @@ export const planoTratamento = pgTable(
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
     concluidoEm: timestamp('concluido_em', { withTimezone: true }),
   },
-  (t) => [index('plano_paciente_idx').on(t.pacienteId, t.criadoEm)],
+  (t) => [
+    index('plano_paciente_idx').on(t.pacienteId, t.criadoEm),
+    /*
+     * Um plano ATIVO por paciente. O odontograma cria item no plano ativo; com
+     * dois, o item cairia num plano imprevisível e o orçamento sairia incompleto.
+     */
+    uniqueIndex('plano_um_ativo_por_paciente')
+      .on(t.pacienteId)
+      .where(sql`${t.status} = 'ativo'`),
+  ],
 )
 
 /**

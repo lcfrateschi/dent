@@ -1,0 +1,219 @@
+/*
+ * CSS de impressão do orçamento.
+ *
+ * Fora do Tailwind e com cores FIXAS de propósito: o documento vai para papel
+ * ou PDF, e não pode herdar o tema escuro do usuário — fundo preto gasta toner e
+ * fica ilegível impresso.
+ *
+ * A folha é A4 com 18mm de margem, que é o que uma impressora doméstica
+ * consegue sem cortar.
+ */
+
+@page {
+  size: A4;
+  margin: 18mm 16mm;
+}
+
+.folha {
+  max-width: 190mm;
+  margin: 0 auto;
+  padding: 24px 20px;
+  background: #ffffff;
+  color: #111827;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.45;
+}
+
+.folha h1 {
+  margin: 0;
+  font-size: 15pt;
+  font-weight: 700;
+}
+
+.folha h2 {
+  margin: 0 0 4px;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.folha p {
+  margin: 0;
+}
+
+.menor {
+  font-size: 8.5pt;
+  color: #4b5563;
+}
+
+/* Instrução de uso: só na tela. */
+.acoes-tela {
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+  font-size: 10pt;
+  color: #374151;
+}
+
+.cabecalho {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #111827;
+}
+
+.numero {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.numero .rotulo {
+  display: block;
+  font-size: 8.5pt;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.numero strong {
+  font-size: 17pt;
+  font-variant-numeric: tabular-nums;
+}
+
+.numero .situacao {
+  display: block;
+  margin-top: 2px;
+  font-size: 9pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #b91c1c;
+}
+
+/* Rascunho impresso por engano não deve circular como proposta. */
+.aviso-rascunho {
+  margin: 14px 0 0;
+  padding: 6px 10px;
+  border: 2px dashed #b91c1c;
+  border-radius: 6px;
+  font-size: 10pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: #b91c1c;
+}
+
+.paciente {
+  margin: 18px 0 14px;
+}
+
+.itens {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5pt;
+  font-variant-numeric: tabular-nums;
+}
+
+.itens th {
+  padding: 6px 8px;
+  border-bottom: 1px solid #111827;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+  color: #374151;
+}
+
+.itens td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  /* Linha de item não deve quebrar entre páginas. */
+  break-inside: avoid;
+}
+
+.itens tfoot td {
+  border-bottom: none;
+  padding-top: 8px;
+}
+
+.itens tfoot .total td {
+  border-top: 2px solid #111827;
+  font-size: 12pt;
+  font-weight: 700;
+}
+
+.centro {
+  text-align: center;
+}
+
+.direita {
+  text-align: right;
+}
+
+.observacao,
+.condicoes {
+  margin-top: 20px;
+  break-inside: avoid;
+}
+
+.condicoes ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 9.5pt;
+  color: #374151;
+}
+
+.condicoes li {
+  margin-bottom: 3px;
+}
+
+.assinaturas {
+  display: flex;
+  gap: 40px;
+  margin-top: 44px;
+  break-inside: avoid;
+}
+
+.assinaturas > div {
+  flex: 1;
+  text-align: center;
+}
+
+.linha-assinatura {
+  display: block;
+  margin-bottom: 5px;
+  border-top: 1px solid #111827;
+}
+
+.rodape {
+  margin-top: 28px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+@media print {
+  .acoes-tela {
+    display: none;
+  }
+
+  .folha {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Garante o fundo branco mesmo com o tema escuro ativo no app. */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+}

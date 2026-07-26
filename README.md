@@ -59,7 +59,7 @@ npm run docker:up        # sobe tudo
 npm run docker:logs      # segue o log do app
 npm run docker:down      # para
 npm run docker:reset     # apaga o volume e recria o banco do zero
-npm run db:verificar     # prova as invariantes do banco (35 casos)
+npm run db:verificar     # prova as invariantes do banco (49 casos)
 ```
 
 Variante de produção (imagem enxuta, `output: standalone`, roda sem root):
@@ -84,9 +84,9 @@ npm run dev
 ## Testes
 
 ```bash
-npm test               # 347 testes (Vitest, sem banco)
+npm test               # 378 testes (Vitest, sem banco)
 npm run typecheck
-npm run db:verificar   # 35 invariantes no banco (precisa do compose de pé)
+npm run db:verificar   # 49 invariantes no banco (precisa do compose de pé)
 ```
 
 Os testes de domínio não tocam o banco de propósito: são as regras puras
@@ -116,6 +116,7 @@ lib/
   auditoria/       trilha LGPD; leitura também é evento
   agenda/          grade, consultas e ações
   anamnese/        formulário versionado e derivação de alertas clínicos
+  orcamento/       plano de tratamento e documento congelado
   odontograma/     tradução item_plano/execucao ↔ estado das faces
   pacientes/       schema Zod, consultas e server actions
   db/schema/       27 tabelas Drizzle, uma área do domínio por arquivo
@@ -124,6 +125,7 @@ lib/
 drizzle/
   0000_inicial.sql      schema gerado
   0001_constraints.sql  triggers e EXCLUDE — as garantias legais e financeiras
+  0004_orcamento_congelado.sql  documento comercial imutável depois de enviado
 docker/
   migrate.sh                 migrate + seed
   verificar-invariantes.sql  prova das invariantes
@@ -152,6 +154,7 @@ período da agenda, ambas com `aria-label`.
 | Autorização em toda action e página | `exigirPermissao` / `exigirPermissaoPagina` |
 | Leitura de prontuário auditada | `lib/auditoria/registrar.ts` |
 | Prontuário imutável, agenda sem conflito | triggers e EXCLUDE no banco |
+| Orçamento enviado é imutável | triggers em `drizzle/0004` |
 | Tokens do código = tokens do catálogo | `lib/ui/tokens.test.ts` |
 
 As três separações de acesso pedidas pela clínica, todas cobertas por teste:
@@ -162,10 +165,11 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 
 | Fase | Situação |
 |---|---|
-| 1 — Domínio e banco | pronta, verificada em Postgres real (35 invariantes) |
+| 1 — Domínio e banco | pronta, verificada em Postgres real (49 invariantes) |
 | 2 — Design system | tokens, componentes base, odontograma pronto |
 | 3 — Esqueleto, MFA, RBAC, CRUD de paciente | pronta |
 | 4 — Agenda | pronta |
 | 5 — Anamnese e odontograma ligado ao banco | pronta |
-| 6 — Plano de tratamento e orçamento | a fazer |
+| 6 — Plano de tratamento e orçamento | pronta |
+| 7 — Prontuário e evoluções assinadas | a fazer |
 | 6+ | ver `ROADMAP.md` |

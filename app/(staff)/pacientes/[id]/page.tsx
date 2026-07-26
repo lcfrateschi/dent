@@ -172,7 +172,17 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               </Button>
             </Link>
           ) : null}
-          {!pode(ator.perfil, 'anamnese', 'criar') && !pode(ator.perfil, 'odontograma', 'ler') ? (
+          {pode(ator.perfil, 'plano_tratamento', 'ler') ? (
+            <Link href={`/pacientes/${p.id}/plano`}>
+              <Button>
+                <Icone nome="cobranca" />
+                Plano e orçamentos
+              </Button>
+            </Link>
+          ) : null}
+          {!pode(ator.perfil, 'anamnese', 'criar') &&
+          !pode(ator.perfil, 'odontograma', 'ler') &&
+          !pode(ator.perfil, 'plano_tratamento', 'ler') ? (
             <p className="text-sm text-fg-3">Seu perfil não tem acesso a dado clínico.</p>
           ) : null}
         </CardBody>

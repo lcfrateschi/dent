@@ -29,6 +29,27 @@
       "when": 1785063109837,
       "tag": "0003_dente_paciente",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785064418068,
+      "tag": "0004_orcamento_congelado",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785064491462,
+      "tag": "0005_plano_unico_ativo",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785064815836,
+      "tag": "0006_orcamento_numero_default",
+      "breakpoints": true
     }
   ]
 }

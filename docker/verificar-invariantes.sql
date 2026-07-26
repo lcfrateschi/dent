@@ -30,6 +30,10 @@ RETURNS void AS $$
 DECLARE c text;
 BEGIN
   BEGIN
+    -- `SET CONSTRAINTS ALL IMMEDIATE` muda o modo para o RESTO da transação, não
+    -- só para o comando. Sem restaurar, um caso com `forcar` faria os seguintes
+    -- checarem na hora e reprovarem edições legítimas em duas etapas.
+    SET CONSTRAINTS ALL DEFERRED;
     FOREACH c IN ARRAY cmds LOOP EXECUTE c; END LOOP;
     IF forcar THEN SET CONSTRAINTS ALL IMMEDIATE; END IF;
     INSERT INTO resultado (caso, esperado, obtido, passou)
@@ -45,6 +49,7 @@ RETURNS void AS $$
 DECLARE c text;
 BEGIN
   BEGIN
+    SET CONSTRAINTS ALL DEFERRED;  -- ver comentário em espera_erro
     FOREACH c IN ARRAY cmds LOOP EXECUTE c; END LOOP;
     IF forcar THEN SET CONSTRAINTS ALL IMMEDIATE; END IF;
     INSERT INTO resultado (caso, esperado, obtido, passou)
@@ -266,10 +271,10 @@ SELECT espera_erro('pagamento: estorno sem motivo', ARRAY[$$
 $$]);
 
 -- ── 5. Coerência de item de plano e convênio ────────────────────────────────
-INSERT INTO plano_tratamento (id, paciente_id, profissional_id, titulo) VALUES
+INSERT INTO plano_tratamento (id, paciente_id, profissional_id, titulo, status) VALUES
   ('99999999-9999-9999-9999-999999999991',
    '33333333-3333-3333-3333-333333333333',
-   '22222222-2222-2222-2222-222222222221', 'Plano de teste');
+   '22222222-2222-2222-2222-222222222221', 'Plano de teste', 'ativo');
 
 SELECT espera_erro('item de plano: cobertura convênio sem convenio_id', ARRAY[$$
   INSERT INTO item_plano (plano_id, procedimento_id, valor, cobertura)
@@ -318,6 +323,93 @@ $$]);
 SELECT espera_erro('usuário: e-mail duplicado ignorando maiúsculas', ARRAY[$$
   INSERT INTO usuario (nome, email, senha_hash, perfil)
   VALUES ('Clone','ANA@teste.local','x','recepcao')
+$$]);
+
+
+-- ── 7. Orçamento congelado (drizzle/0004) ───────────────────────────────────
+-- Documento comercial que muda depois de entregue ao paciente é problema
+-- jurídico, não bug de tela.
+SELECT espera_ok('orçamento: rascunho com soma das linhas correta', ARRAY[$$
+  INSERT INTO orcamento (id, numero, paciente_id, status, validade_ate, valor_bruto, desconto, valor_total)
+  VALUES ('aaaa1111-1111-4111-8111-111111111111', 990001,
+          '33333333-3333-3333-3333-333333333333', 'rascunho', '2026-12-31', '200.00', '20.00', '180.00')
+$$, $$
+  INSERT INTO orcamento_item (orcamento_id, descricao, quantidade, valor_unitario) VALUES
+    ('aaaa1111-1111-4111-8111-111111111111', 'Restauração 16', 1, '100.00'),
+    ('aaaa1111-1111-4111-8111-111111111111', 'Restauração 26', 1, '100.00')
+$$], true);
+
+SELECT espera_erro('orçamento: soma das linhas difere do valor bruto', ARRAY[$$
+  INSERT INTO orcamento (id, numero, paciente_id, status, validade_ate, valor_bruto, desconto, valor_total)
+  VALUES ('aaaa1111-1111-4111-8111-111111111112', 990002,
+          '33333333-3333-3333-3333-333333333333', 'rascunho', '2026-12-31', '500.00', '0', '500.00')
+$$, $$
+  INSERT INTO orcamento_item (orcamento_id, descricao, quantidade, valor_unitario)
+  VALUES ('aaaa1111-1111-4111-8111-111111111112', 'Coroa', 1, '100.00')
+$$], true);
+
+SELECT espera_erro('orçamento: nenhuma linha', ARRAY[$$
+  INSERT INTO orcamento (id, numero, paciente_id, status, validade_ate, valor_bruto, desconto, valor_total)
+  VALUES ('aaaa1111-1111-4111-8111-111111111113', 990003,
+          '33333333-3333-3333-3333-333333333333', 'rascunho', '2026-12-31', '50.00', '0', '50.00')
+$$], true);
+
+SELECT espera_erro('orçamento: desconto maior que o bruto', ARRAY[$$
+  INSERT INTO orcamento (numero, paciente_id, status, validade_ate, valor_bruto, desconto, valor_total)
+  VALUES (990004, '33333333-3333-3333-3333-333333333333', 'rascunho', '2026-12-31', '100.00', '150.00', '-50.00')
+$$]);
+
+-- Editar RASCUNHO em duas etapas é legítimo: linha e total mudam na mesma transação.
+SELECT espera_ok('orçamento: editar linha e total do rascunho', ARRAY[$$
+  UPDATE orcamento_item SET valor_unitario = '120.00'
+   WHERE orcamento_id = 'aaaa1111-1111-4111-8111-111111111111' AND descricao = 'Restauração 16'
+$$, $$
+  UPDATE orcamento SET valor_bruto = '220.00', valor_total = '200.00'
+   WHERE id = 'aaaa1111-1111-4111-8111-111111111111'
+$$], true);
+
+SELECT espera_ok('orçamento: enviar', ARRAY[$$
+  UPDATE orcamento SET status = 'enviado', enviado_em = now()
+   WHERE id = 'aaaa1111-1111-4111-8111-111111111111'
+$$], true);
+
+SELECT espera_erro('orçamento ENVIADO: alterar valor', ARRAY[$$
+  UPDATE orcamento SET valor_bruto = '999.00', valor_total = '979.00'
+   WHERE id = 'aaaa1111-1111-4111-8111-111111111111'
+$$]);
+
+SELECT espera_erro('orçamento ENVIADO: esticar a validade', ARRAY[$$
+  UPDATE orcamento SET validade_ate = '2027-12-31'
+   WHERE id = 'aaaa1111-1111-4111-8111-111111111111'
+$$]);
+
+SELECT espera_erro('orçamento ENVIADO: editar descrição da linha', ARRAY[$$
+  UPDATE orcamento_item SET descricao = 'Outra coisa'
+   WHERE orcamento_id = 'aaaa1111-1111-4111-8111-111111111111'
+$$]);
+
+SELECT espera_erro('orçamento ENVIADO: acrescentar linha', ARRAY[$$
+  INSERT INTO orcamento_item (orcamento_id, descricao, quantidade, valor_unitario)
+  VALUES ('aaaa1111-1111-4111-8111-111111111111', 'Extra', 1, '10.00')
+$$]);
+
+SELECT espera_erro('orçamento ENVIADO: apagar linha', ARRAY[$$
+  DELETE FROM orcamento_item WHERE orcamento_id = 'aaaa1111-1111-4111-8111-111111111111'
+$$]);
+
+SELECT espera_erro('orçamento ENVIADO: excluir o documento', ARRAY[$$
+  DELETE FROM orcamento WHERE id = 'aaaa1111-1111-4111-8111-111111111111'
+$$]);
+
+SELECT espera_ok('orçamento ENVIADO: registrar a decisão do paciente', ARRAY[$$
+  UPDATE orcamento SET status = 'aprovado', decidido_em = now()
+   WHERE id = 'aaaa1111-1111-4111-8111-111111111111'
+$$], true);
+
+SELECT espera_erro('plano: dois ativos para o mesmo paciente', ARRAY[$$
+  INSERT INTO plano_tratamento (paciente_id, profissional_id, titulo, status)
+  VALUES ('33333333-3333-3333-3333-333333333333',
+          '22222222-2222-2222-2222-222222222221', 'Segundo plano', 'ativo')
 $$]);
 
 -- ── Relatório ───────────────────────────────────────────────────────────────

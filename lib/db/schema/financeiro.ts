@@ -27,8 +27,15 @@ export const orcamento = pgTable(
   'orcamento',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    /** Número sequencial legível, para o paciente citar ao telefone. */
-    numero: integer('numero').notNull().unique(),
+    /**
+     * Número sequencial legível, para o paciente citar ao telefone.
+     * A sequência é criada em drizzle/0001_constraints.sql; o default é declarado
+     * aqui para o Drizzle saber que a coluna é opcional no insert.
+     */
+    numero: integer('numero')
+      .notNull()
+      .unique()
+      .default(sql`nextval('orcamento_numero_seq')`),
     pacienteId: uuid('paciente_id')
       .notNull()
       .references(() => paciente.id, { onDelete: 'restrict' }),
@@ -48,6 +55,7 @@ export const orcamento = pgTable(
   },
   (t) => [
     index('orcamento_paciente_idx').on(t.pacienteId, t.criadoEm),
+    index('orcamento_status_idx').on(t.status, t.validadeAte),
     check('orcamento_desconto_nao_negativo', sql`${t.desconto} >= 0`),
     check('orcamento_total_coerente', sql`${t.valorTotal} = ${t.valorBruto} - ${t.desconto}`),
     check('orcamento_total_nao_negativo', sql`${t.valorTotal} >= 0`),

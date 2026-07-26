@@ -1,0 +1,1 @@
+ALTER TABLE "orcamento" ALTER COLUMN "numero" SET DEFAULT nextval('orcamento_numero_seq');
