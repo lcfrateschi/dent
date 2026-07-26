@@ -1,0 +1,105 @@
+# dent — Sistema para consultório odontológico
+
+Ver `ROADMAP.md` para as fases e `GLOSSARIO.md` para a linguagem do domínio.
+**Use os termos do glossário no código.** `evolucao` nunca é `nota`; `itemPlano` nunca é `procedimento`.
+
+## Decisões arquiteturais fixas
+
+1. **Single-tenant.** Uma clínica. Não existe `clinica_id` nas tabelas — `clinica` é uma
+   linha de configuração singleton (`id = 1`).
+2. **Dois realms de autenticação.** Staff (`usuario`) e paciente (`paciente_conta`) são
+   tabelas e sessões separadas. **Nunca compartilhe uma query entre staff e portal** — é
+   exatamente ali que nasce o IDOR que expõe o prontuário do vizinho.
+3. **`evolucao` é append-only.** Sem `UPDATE`, sem `DELETE` — garantido por trigger no banco,
+   não por disciplina no código. Corrigir = inserir nova evolução com `retifica_id` apontando
+   para a anterior. Exigência do CFO; guarda mínima de 20 anos.
+4. **Convênio já tem gancho no schema desde a Fase 1** (`preco_convenio`,
+   `item_plano.cobertura`, `item_plano.convenio_id`, `item_plano.guia_tiss_id`). O módulo TISS
+   é a Fase 13, mas o modelo financeiro não precisará ser refatorado para recebê-lo.
+5. **Regras de domínio ficam em `lib/domain/`**, puras e testadas. Server action não decide
+   regra de negócio — ela valida entrada, chama o domínio e persiste.
+6. **`audit_log` em todo acesso a prontuário.** Dado de saúde é dado sensível na LGPD:
+   leitura também é evento auditável, não só escrita.
+
+## Stack
+
+| Camada | Escolha | Fase |
+|---|---|---|
+| Banco | Postgres + Drizzle ORM | 1 |
+| Regras | TypeScript puro em `lib/domain/` | 1 |
+| Testes | Vitest | 1 |
+| Front + Back | Next.js 15 App Router | 3 |
+| UI | Tailwind + shadcn/ui | 2 |
+| Auth | Auth.js, MFA obrigatório para staff | 3 |
+| Anexos | S3/R2, bucket privado, URL assinada | 10 |
+| WhatsApp | Meta Cloud API oficial | 9 |
+
+Next.js e Tailwind **ainda não estão instalados** — entram na Fase 3, conforme a disciplina de
+fatia vertical. A Fase 1 é só domínio e banco.
+
+### Node
+
+Alvo: **Node 22** (`.nvmrc`, `engines: >=20.11`). O ambiente onde a Fase 1 foi escrita tinha
+Node 18.19, que está EOL desde abril/2025 — por isso o Vitest está em `^3` e não em `^4`
+(v4 usa `styleText` de `node:util`, ausente no 18). **Ao subir para Node 20+, atualize o
+Vitest para `^4`** e remova esta nota.
+
+### Pendências conhecidas
+
+- **`codigo_tuss` está nulo no seed, de propósito.** Código TUSS inventado gera glosa. A fonte
+  é a Terminologia Unificada em Saúde Suplementar da ANS (Tabela 22, procedimentos
+  odontológicos). Importar a versão vigente antes da Fase 13.
+- **Valores do catálogo são de partida** — revisar com a clínica.
+- **Termos ⚠️ do GLOSSARIO.md** precisam de validação com o dentista antes da Fase 4.
+  O mais relevante: base de cálculo da comissão (`clinica.base_comissao`) — sobre valor
+  executado ou sobre valor recebido?
+
+## Estrutura
+
+```
+lib/
+  db/
+    schema/        tabelas Drizzle, um arquivo por área do domínio
+    seed/          dados de referência (52 dentes FDI, catálogo TUSS, perfis)
+    index.ts       cliente de conexão
+  domain/          regras puras + .test.ts ao lado
+drizzle/           migrations geradas + SQL manual de constraints
+app/               (Fase 3) (staff)/ e (portal)/ separados
+```
+
+## Convenções
+
+- **Nomes de tabela e coluna em `snake_case` português**; identificadores TS em `camelCase`.
+  O domínio é falado em português pela clínica — traduzir gera ambiguidade.
+- **Dinheiro**: `numeric(10,2)` no banco, `string` no TS. Nunca `float` para dinheiro.
+  Somas e rateios passam por `lib/domain/dinheiro.ts` (aritmética em centavos inteiros).
+- **Datas**: `timestamptz` sempre. `date` só para o que é genuinamente um dia civil
+  (nascimento, vencimento de parcela, validade de orçamento).
+- **Dentes**: notação FDI (11–48 permanentes, 51–85 decíduos). A `smallint` é a chave.
+  Nunca renumerar para 1–32.
+- Toda tabela com dado de paciente tem `criado_em`; as mutáveis também têm `atualizado_em`.
+- Zod valida na borda; o tipo do Drizzle é a fonte da verdade do formato.
+
+## Comandos
+
+```bash
+npm run db:generate   # gera migration a partir do schema
+npm run db:migrate    # aplica (precisa de DATABASE_URL)
+npm run db:seed       # popula dados de referência
+npm test              # vitest
+npm run typecheck     # tsc --noEmit
+```
+
+## Armadilhas do domínio (já custaram retrabalho em outros sistemas)
+
+- **Face válida depende do tipo de dente.** Incisivo e canino têm *incisal*; pré-molar e molar
+  têm *oclusal*. Nunca os dois. Superior tem *palatina*, inferior tem *lingual*.
+- **Dentição mista existe.** Criança de 8 anos tem decíduos e permanentes ao mesmo tempo.
+  Odontograma precisa mostrar as duas arcadas simultaneamente.
+- **Quatro entidades distintas**, frequentemente confundidas em uma só:
+  `plano_tratamento` (o que se pretende fazer) → `item_plano` (uma linha: procedimento + dente
+  + faces) → `execucao` (foi feito, por quem, quando) → `cobranca`/`parcela` (o dinheiro).
+  Nunca colapse.
+- **Orçamento é um documento congelado**, não uma view do plano. Se o plano mudar, o orçamento
+  já enviado não muda — gera-se outro.
+- **Menor de idade** tem `responsavel_legal_id`. Consentimento e assinatura são do responsável.

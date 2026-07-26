@@ -1,0 +1,27 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Ambiente — nunca comitar credenciais
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Dados sensíveis: nada de dump de paciente no repo
+*.dump
+*.sql.gz
+/backups/
+/uploads/
+
+.DS_Store
+*.log
+npm-debug.log*
+coverage/
+.vitest/
+*.tsbuildinfo
+.idea/
+.vscode/*
+!.vscode/extensions.json
