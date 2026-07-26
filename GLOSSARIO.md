@@ -92,6 +92,28 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **Glosa** | Recusa, total ou parcial, de um item da guia pelo convênio. Precisa de motivo e permite recurso. |
 | **Repasse** | Pagamento do convênio para a clínica, geralmente agregando muitas guias. Exige conciliação item a item. |
 
+## Documentos e imagens
+
+| Termo | Definição |
+|---|---|
+| **Documento** | Qualquer arquivo anexado ao prontuário: radiografia, foto clínica, exame, atestado, receita, termo, PDF de orçamento. Guarda de 20 anos como o resto do prontuário. |
+| **Etapa** | Momento clínico da imagem: *inicial*, *durante* ou *final*. Inicial + final do mesmo dente formam o antes/depois. Não é a mesma coisa que a data — duas fotos do mesmo dia podem ser as duas pontas de uma restauração. |
+| **Data do exame** | Quando a imagem foi feita, que pode ser bem anterior ao envio. É por ela que a lista é ordenada, não pela data do upload. |
+| **Chave de armazenamento** | Onde o arquivo mora (`pacientes/<id>/<ano>/<documentoId>.<ext>`). Nunca deriva do nome enviado, e é imutável depois de gravada. |
+| **Remoção lógica** | `removido_em` + motivo + autor. O arquivo continua guardado e deixa de ser acessível. **Não se desfaz**: corrigir é remover e enviar de novo. |
+| **DICOM** | Formato das imagens de tomógrafo. Identificado pela marca `DICM` no deslocamento 128 do arquivo — é o único formato aceito que não se identifica nos primeiros bytes. |
+| **HEIC** | Formato das fotos de iPhone. Aceito, mas não abre direto no navegador: a tela avisa que é preciso baixar. |
+
+## Impressos
+
+| Termo | Definição |
+|---|---|
+| **Atestado de comparecimento** | Declara que o paciente esteve em atendimento. Sem dias de afastamento. |
+| **Afastamento** | Recomendação de repouso, em dias. Escrito em dígito e em palavra ("3 (três) dias") porque dígito sozinho se altera com uma canetada. |
+| **CID-10** | Código do diagnóstico. Faixa odontológica: K00 a K14. **Só vai impresso com autorização expressa do paciente** — o atestado costuma ir para o RH da empresa. |
+| **Posologia** | Dose, via, intervalo e duração. Sem ela a farmácia não dispensa e o paciente inventa; a receita é recusada na emissão. |
+| **Controle especial** | Medicamento da Portaria 344/98 (diazepam, tramadol, codeína…). Exige receituário próprio, numerado e em duas vias — o sistema avisa, mas não bloqueia: quem sabe o que prescreve é o CD. |
+
 ## LGPD
 
 | Termo | Definição |

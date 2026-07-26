@@ -190,6 +190,15 @@ export const interpretacaoRespostaEnum = pgEnum('interpretacao_resposta', [
   'nao_entendido',
 ])
 
+// ── Documentos ────────────────────────────────────────────────────────────────
+/**
+ * Momento clínico da imagem, para a comparação antes/depois.
+ *
+ * Não é o mesmo que a data: duas fotos do mesmo dia podem ser "antes" e "depois"
+ * de uma restauração, e um tratamento longo tem várias intermediárias.
+ */
+export const etapaDocumentoEnum = pgEnum('etapa_documento', ['inicial', 'durante', 'final'])
+
 // ── Auditoria ─────────────────────────────────────────────────────────────────
 export const atorTipoEnum = pgEnum('ator_tipo', ['staff', 'paciente', 'sistema'])
 

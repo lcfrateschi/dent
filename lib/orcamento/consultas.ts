@@ -199,6 +199,8 @@ export interface OrcamentoCompleto {
   readonly enviadoEm: Date | null
   readonly decididoEm: Date | null
   readonly criadoPorNome: string | null
+  /** Chave do PDF arquivado (Fase 10). Nula até alguém arquivar. */
+  readonly pdfKey: string | null
   readonly linhas: readonly LinhaDoOrcamento[]
 }
 
@@ -224,6 +226,7 @@ export async function acharOrcamento(
       enviadoEm: orcamento.enviadoEm,
       decididoEm: orcamento.decididoEm,
       criadoPorNome: usuario.nome,
+      pdfKey: orcamento.pdfKey,
     })
     .from(orcamento)
     .innerJoin(paciente, eq(paciente.id, orcamento.pacienteId))

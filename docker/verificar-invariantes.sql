@@ -730,6 +730,132 @@ $$, $$
           '5511987654321', 'Olá!', '2026-11-30 14:00:00-03')
 $$]);
 
+-- ── 10. Documentos anexados ao prontuário ───────────────────────────────────
+--
+-- Radiografia é prontuário: mesma guarda de 20 anos da evolução. E o vínculo com
+-- o arquivo no storage tem de ser imutável, senão a conferência de integridade
+-- na leitura não prova nada.
+-- ────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF to_regclass('documento') IS NULL THEN
+    RAISE EXCEPTION 'tabela documento não existe — rode as migrations antes';
+  END IF;
+  -- Ver o caso 59: tabela ausente faria todo `espera_erro` "passar".
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'documento' AND column_name = 'removido_por_id'
+  ) THEN
+    RAISE EXCEPTION 'coluna documento.removido_por_id não existe — falta a migration 0010';
+  END IF;
+END $$;
+
+SET CONSTRAINTS ALL DEFERRED;
+
+SELECT espera_ok('documento: anexar radiografia ao paciente', ARRAY[$$
+  INSERT INTO documento
+    (id, paciente_id, tipo, nome, storage_key, mime_type, tamanho_bytes, sha256, dente_fdi, etapa, data_exame)
+  VALUES ('99999999-9999-4999-8999-999999999991',
+          '33333333-3333-3333-3333-333333333333',
+          'radiografia', 'Periapical 11', 'pacientes/33333333-3333-3333-3333-333333333333/2026/doc1.jpg',
+          'image/jpeg', 248000, repeat('a', 64), 11, 'inicial', '2026-09-01 10:00:00-03')
+$$]);
+
+SELECT espera_erro('documento: sha256 que não é hex de 64', ARRAY[$$
+  INSERT INTO documento
+    (paciente_id, tipo, nome, storage_key, mime_type, tamanho_bytes, sha256)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'exame', 'x', 'k/1.pdf',
+          'application/pdf', 100, 'nao-e-hash')
+$$]);
+
+SELECT espera_erro('documento: tamanho zero', ARRAY[$$
+  INSERT INTO documento
+    (paciente_id, tipo, nome, storage_key, mime_type, tamanho_bytes, sha256)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'exame', 'x', 'k/2.pdf',
+          'application/pdf', 0, repeat('b', 64))
+$$]);
+
+SELECT espera_erro('documento: nome vazio', ARRAY[$$
+  INSERT INTO documento
+    (paciente_id, tipo, nome, storage_key, mime_type, tamanho_bytes, sha256)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'exame', '   ', 'k/3.pdf',
+          'application/pdf', 100, repeat('b', 64))
+$$]);
+
+SELECT espera_erro('documento: DOIS registros na mesma chave de storage', ARRAY[$$
+  INSERT INTO documento
+    (paciente_id, tipo, nome, storage_key, mime_type, tamanho_bytes, sha256)
+  VALUES ('33333333-3333-3333-3333-333333333333', 'exame', 'outro',
+          'pacientes/33333333-3333-3333-3333-333333333333/2026/doc1.jpg',
+          'image/jpeg', 100, repeat('c', 64))
+$$]);
+
+SELECT espera_ok('documento: corrigir metadado (nome, dente, etapa, data)', ARRAY[$$
+  UPDATE documento
+     SET nome='Periapical dente 11', dente_fdi=21, etapa='final',
+         data_exame='2026-09-02 10:00:00-03', descricao='conferido com o dentista'
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: trocar a storage_key', ARRAY[$$
+  UPDATE documento SET storage_key='outra/chave.jpg'
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: reescrever o sha256 (esconderia troca de arquivo)', ARRAY[$$
+  UPDATE documento SET sha256=repeat('d', 64)
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: reescrever o tamanho', ARRAY[$$
+  UPDATE documento SET tamanho_bytes=1
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: mover para outro paciente', ARRAY[$$
+  INSERT INTO paciente (id, nome, data_nascimento)
+  VALUES ('33333333-3333-3333-3333-333333333334', 'Outro Paciente', '1985-01-01')
+$$, $$
+  UPDATE documento SET paciente_id='33333333-3333-3333-3333-333333333334'
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: remover sem motivo', ARRAY[$$
+  UPDATE documento SET removido_em=now(),
+         removido_por_id='11111111-1111-1111-1111-111111111111'
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: remover sem autor', ARRAY[$$
+  UPDATE documento SET removido_em=now(), motivo_remocao='enviado por engano'
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_ok('documento: remover com motivo e autor', ARRAY[$$
+  UPDATE documento
+     SET removido_em=now(), motivo_remocao='enviado no paciente errado',
+         removido_por_id='11111111-1111-1111-1111-111111111111'
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: DESFAZER a remoção', ARRAY[$$
+  UPDATE documento SET removido_em=NULL
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: reescrever a data de remoção', ARRAY[$$
+  UPDATE documento SET removido_em='2020-01-01 00:00:00-03'
+   WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: excluir fisicamente', ARRAY[$$
+  DELETE FROM documento WHERE id='99999999-9999-4999-8999-999999999991'
+$$]);
+
+SELECT espera_erro('documento: excluir paciente que tem documento', ARRAY[$$
+  DELETE FROM paciente WHERE id='33333333-3333-3333-3333-333333333333'
+$$]);
+
 -- ── Relatório ───────────────────────────────────────────────────────────────
 \echo ''
 \echo '════════════════════════════════════════════════════════════════════════'

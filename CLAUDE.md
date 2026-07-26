@@ -31,7 +31,7 @@ Ver `ROADMAP.md` para as fases e `GLOSSARIO.md` para a linguagem do domínio.
 | Front + Back | Next.js 15 App Router | 3 |
 | UI | Tailwind + shadcn/ui | 2 |
 | Auth | Auth.js, MFA obrigatório para staff | 3 |
-| Anexos | S3/R2, bucket privado, URL assinada | 10 |
+| Anexos | Disco (padrão) ou S3/R2, bucket privado; servidos pela aplicação | 10 |
 | WhatsApp | Meta Cloud API oficial | 9 |
 
 Next.js e Tailwind **ainda não estão instalados** — entram na Fase 3, conforme a disciplina de
@@ -66,13 +66,23 @@ Ele desconhece as EXCLUDE constraints e os triggers de `drizzle/0001_constraints
 derrubá-los silenciosamente — junto com o append-only do prontuário. O script foi removido do
 `package.json` de propósito. Use `db:generate` + `db:migrate`.
 
-Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 85 casos que provam
+Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 102 casos que provam
 as invariantes contra um Postgres real. O script **falha na hora** se uma tabela esperada não
 existir — um `espera_erro` com a tabela ausente "passa" pelo motivo errado, e isso já produziu
 um relatório verde provando invariante nenhuma.
 
 ### Pendências conhecidas
 
+- **Os anexos gravam em DISCO, não em bucket.** `ARMAZENAMENTO=disco` é o padrão e
+  é uma escolha válida para clínica em um servidor só — mas o volume `anexos`
+  **precisa entrar no backup**, e o banco sem os arquivos não reconstitui
+  prontuário. `lib/armazenamento/s3.ts` está pronto e **nunca executou contra um
+  bucket real**; a assinatura SigV4, que é a parte difícil de diagnosticar, está
+  provada contra os vetores oficiais da AWS.
+- **O PDF gerado nunca foi aberto num visualizador por mim.** Foi validado
+  estruturalmente (a tabela xref é relida no teste) e extraído com `pdftotext` e
+  Ghostscript, que leem o conteúdo correto. Layout fino — margem, alinhamento —
+  merece uma olhada humana antes de o primeiro atestado sair para valer.
 - **WhatsApp roda no provedor SIMULADO.** Nenhuma mensagem sai de verdade até a clínica ter
   conta WhatsApp Business com o template `lembrete_consulta_pt_br` aprovado. `lib/mensageria/
   provedor/meta.ts` foi escrito pela documentação da Cloud API v21 e **nunca executou contra a
@@ -102,6 +112,16 @@ um relatório verde provando invariante nenhuma.
   confiança do paciente. A trigger de transição em `drizzle/0009` impede `enviando → pendente`.
 - **A mensagem de WhatsApp não carrega dado clínico.** Só nome, profissional, data e hora — a
   tela do celular do paciente é lida por outras pessoas. Ver `lib/domain/textoMensagem.ts`.
+- **Anexo do prontuário NÃO é servido por URL assinada.** Os bytes passam pela
+  rota `/api/documentos/[id]`, que autoriza e audita cada acesso. URL assinada é
+  encaminhável: quem recebe o link vê a radiografia sem sessão e sem deixar
+  rastro. A troca é banda por exigência legal, e a escolha é a exigência legal.
+- **Remoção de documento é de mão única.** Corrigir envio errado é remover com
+  motivo e enviar de novo. Esconder e reexibir um documento clínico sem rastro é
+  o que a guarda de 20 anos existe para impedir. Trigger em `drizzle/0011`.
+- **CID no atestado só com autorização expressa do paciente.** O atestado costuma
+  ir para o RH da empresa; o diagnóstico é dado de saúde. O padrão é não imprimir,
+  e a tela avisa que não imprimiu. Ver `lib/domain/impressos.ts`.
 
 ## Estrutura
 

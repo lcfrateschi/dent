@@ -11,6 +11,8 @@ import {
   ClipboardList,
   Clock,
   CreditCard,
+  Download,
+  Image as ImagemIcone,
   MailQuestion,
   MessageCircle,
   Send,
@@ -62,6 +64,7 @@ export const ICONES = {
   odontograma: Stethoscope,
   anamnese: ClipboardList,
   whatsapp: MessageCircle,
+  documentos: ImagemIcone,
 
   // Ações
   novo: Plus,
@@ -71,6 +74,7 @@ export const ICONES = {
   proximo: ChevronRight,
   cobranca: CreditCard,
   enviar: Send,
+  baixar: Download,
   /** Resposta que a máquina não entendeu e espera um humano. */
   pendente_humano: MailQuestion,
 

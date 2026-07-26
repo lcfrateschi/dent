@@ -71,6 +71,20 @@
       "when": 1785069700000,
       "tag": "0009_mensageria_travas",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785072502249,
+      "tag": "0010_documento_etapa",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785072600000,
+      "tag": "0011_documento_travas",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import { pode } from '@/lib/authz/politicas'
 import { exigirPermissaoPagina } from '@/lib/authz/sessao'
 import { diasParaVencer } from '@/lib/domain/orcamento'
 import { acharOrcamento, hojeDaClinica } from '@/lib/orcamento/consultas'
+import { BotaoArquivarPdf } from './BotaoArquivarPdf'
 import { dataBr, dataHoraBr, reais } from '@/lib/ui/moeda'
 import type { Metadata } from 'next'
 import Link from 'next/link'
@@ -47,12 +48,20 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           </p>
         </div>
 
-        <Link href={`/orcamentos/${o.id}/imprimir`} target="_blank">
-          <Button>
-            <Icone nome="anamnese" tamanho={14} />
-            Imprimir ou salvar PDF
-          </Button>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/orcamentos/${o.id}/imprimir`} target="_blank">
+            <Button>
+              <Icone nome="anamnese" tamanho={14} />
+              Imprimir
+            </Button>
+          </Link>
+          {/* Arquivar é diferente de imprimir: grava UM arquivo com hash no
+              prontuário, que é o que se confere quando o paciente aparece com a
+              via dele meses depois. */}
+          {pode(ator.perfil, 'orcamento', 'criar') ? (
+            <BotaoArquivarPdf orcamentoId={o.id} jaArquivado={o.pdfKey !== null} />
+          ) : null}
+        </div>
       </div>
 
       {/* Aviso de vencimento: só faz sentido para quem ainda espera resposta. */}

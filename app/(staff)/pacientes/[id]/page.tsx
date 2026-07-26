@@ -174,7 +174,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <Card>
         <CardHeader
           titulo="Clínico"
-          descricao="Prontuário, anamnese, odontograma e plano de tratamento."
+          descricao="Prontuário, anamnese, odontograma, imagens e plano de tratamento."
         />
         <CardBody className="flex flex-wrap gap-2">
           {pode(ator.perfil, 'anamnese', 'criar') ? (
@@ -201,6 +201,22 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               </Button>
             </Link>
           ) : null}
+          {pode(ator.perfil, 'documento', 'ler') ? (
+            <Link href={`/pacientes/${p.id}/documentos`}>
+              <Button>
+                <Icone nome="documentos" />
+                Documentos e imagens
+              </Button>
+            </Link>
+          ) : null}
+          {pode(ator.perfil, 'prontuario', 'assinar') ? (
+            <Link href={`/pacientes/${p.id}/impressos`}>
+              <Button>
+                <Icone nome="anamnese" />
+                Atestado e receita
+              </Button>
+            </Link>
+          ) : null}
           {pode(ator.perfil, 'prontuario', 'ler') ? (
             <Link href={`/pacientes/${p.id}/prontuario`}>
               <Button variante="primario">
@@ -212,6 +228,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           {!pode(ator.perfil, 'anamnese', 'criar') &&
           !pode(ator.perfil, 'odontograma', 'ler') &&
           !pode(ator.perfil, 'plano_tratamento', 'ler') &&
+          !pode(ator.perfil, 'documento', 'ler') &&
           !pode(ator.perfil, 'prontuario', 'ler') ? (
             <p className="text-sm text-fg-3">Seu perfil não tem acesso a dado clínico.</p>
           ) : null}

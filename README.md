@@ -59,7 +59,7 @@ npm run docker:up        # sobe tudo
 npm run docker:logs      # segue o log do app
 npm run docker:down      # para
 npm run docker:reset     # apaga o volume e recria o banco do zero
-npm run db:verificar     # prova as invariantes do banco (85 casos)
+npm run db:verificar     # prova as invariantes do banco (102 casos)
 ```
 
 Variante de produção (imagem enxuta, `output: standalone`, roda sem root):
@@ -84,9 +84,9 @@ npm run dev
 ## Testes
 
 ```bash
-npm test               # 522 testes (Vitest, sem banco)
+npm test               # 637 testes (Vitest, sem banco)
 npm run typecheck
-npm run db:verificar   # 85 invariantes no banco (precisa do compose de pé)
+npm run db:verificar   # 102 invariantes no banco (precisa do compose de pé)
 ```
 
 Os testes de domínio não tocam o banco de propósito: são as regras puras
@@ -131,6 +131,35 @@ Três decisões que valem saber antes de operar:
 - **Dúvida não vira ação.** "Não sei se consigo" não cancela nada; vai para a
   fila da recepção. O interpretador é conservador de propósito.
 
+## Imagens e documentos (Fase 10)
+
+Radiografia, foto clínica, exame, atestado, receita e o PDF do orçamento. O
+armazenamento padrão é **disco** (volume `anexos` no compose) e há provedor de
+S3/R2 pronto para bucket privado — sem queda automática de um para o outro.
+
+```bash
+# fluxo inteiro contra o Postgres e o disco: anexa, baixa pela rota, confere
+# integridade, prova que falha no banco não deixa arquivo órfão
+docker compose exec app npm run documentos:demo
+```
+
+Quatro coisas que valem saber:
+
+- **Não existe URL de bucket em lugar nenhum.** Todo download passa por
+  `/api/documentos/<id>`, que exige sessão, confere o perfil e registra a
+  exportação na auditoria. URL assinada seria encaminhável — quem recebesse o
+  link veria a radiografia sem sessão e sem aparecer na trilha.
+- **O tipo do arquivo vem dos bytes.** `.jpg` com conteúdo de executável é
+  recusado; HEIC de iPhone é aceito com aviso de que não abre no navegador; DICOM
+  de tomógrafo é reconhecido pela marca no deslocamento 128.
+- **Integridade conferida em cada leitura.** O SHA-256 do que veio do storage é
+  comparado com o do banco, que é imutável por trigger. Divergir bloqueia o
+  download em vez de entregar arquivo suspeito.
+- **Atestado e receita são PDF gerado no servidor**, arquivado no prontuário com
+  hash. O papel que o paciente leva e o que a clínica guarda são o mesmo arquivo.
+  A geração é ato privativo do CD (`prontuario: assinar`), e o CID **não** é
+  impresso sem autorização expressa do paciente.
+
 ## Onde está o quê
 
 ```
@@ -141,6 +170,7 @@ app/
   design/          playground do design system (fonte dos previews)
   api/auth/        rotas do Auth.js
   api/whatsapp/    webhook da Meta — pública, autenticada por HMAC
+  api/documentos/  download autorizado e auditado de anexo do prontuário
 middleware.ts      guarda de rotas + trava de MFA
 components/
   agenda/          grade semanal e estilos de status
@@ -157,6 +187,8 @@ lib/
   prontuario/      evolução assinada, retificação e linha do tempo
   financeiro/      cobrança, parcelas, pagamento, conciliação e comissão
   mensageria/      fila do WhatsApp, provedores, webhook e resposta do paciente
+  armazenamento/   provedor em disco e S3/R2, com SigV4 escrito à mão
+  documentos/      anexo, emissão de atestado/receita e escritor de PDF
   odontograma/     tradução item_plano/execucao ↔ estado das faces
   pacientes/       schema Zod, consultas e server actions
   db/schema/       29 tabelas Drizzle, uma área do domínio por arquivo
@@ -167,6 +199,7 @@ drizzle/
   0001_constraints.sql  triggers e EXCLUDE — as garantias legais e financeiras
   0004_orcamento_congelado.sql  documento comercial imutável depois de enviado
   0009_mensageria_travas.sql    idempotência do envio e append-only das respostas
+  0011_documento_travas.sql     anexo imutável, remoção lógica com autor
 docker/
   migrate.sh                 migrate + seed
   verificar-invariantes.sql  prova das invariantes
@@ -205,6 +238,12 @@ período da agenda, ambas com `aria-label`.
 | Reentrega de webhook não reprocessa | `resposta_whatsapp.id_externo` UNIQUE |
 | Sem consentimento LGPD, nada é enfileirado | trigger em `drizzle/0009` |
 | Mensagem e resposta não se excluem | triggers em `drizzle/0009` |
+| Anexo servido só com sessão e permissão | `app/api/documentos/[id]/route.ts`, sem URL de bucket |
+| Integridade do anexo conferida em cada leitura | SHA-256 comparado; `sha256` imutável por trigger |
+| Tipo do arquivo lido dos bytes, não da extensão | `lib/domain/arquivo.ts` |
+| Chave de storage nunca vem do nome enviado | `chaveArmazenamento`, e travessia recusada em duas camadas |
+| Documento não se exclui nem troca de paciente | triggers em `drizzle/0011` |
+| CID só sai no atestado com autorização do paciente | `lib/domain/impressos.ts` |
 | Tokens do código = tokens do catálogo | `lib/ui/tokens.test.ts` |
 
 As três separações de acesso pedidas pela clínica, todas cobertas por teste:
@@ -215,7 +254,7 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 
 | Fase | Situação |
 |---|---|
-| 1 — Domínio e banco | pronta, verificada em Postgres real (85 invariantes) |
+| 1 — Domínio e banco | pronta, verificada em Postgres real (102 invariantes) |
 | 2 — Design system | tokens, componentes base, odontograma pronto |
 | 3 — Esqueleto, MFA, RBAC, CRUD de paciente | pronta |
 | 4 — Agenda | pronta |
@@ -224,4 +263,5 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 7 — Prontuário e evoluções assinadas | pronta |
 | 8 — Financeiro | pronta |
 | 9 — Confirmação por WhatsApp | pronta (provedor simulado; Meta pendente de conta) |
-| 6+ | ver `ROADMAP.md` |
+| 10 — Imagens e documentos | pronta (armazenamento em disco; S3/R2 pendente de bucket) |
+| 11+ | ver `ROADMAP.md` |

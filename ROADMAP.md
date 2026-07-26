@@ -151,7 +151,7 @@ Depois de pronto, cada módulo seguinte é repetição de um padrão já provado
 | 8 | Financeiro particular | 2,5 | Parcelas, recebimento, inadimplência, comissão |
 | 9 | **WhatsApp** | 1 | ✅ pronta. Fila idempotente, webhook assinado, resposta → status. Provedor simulado enquanto não há conta Meta |
 | | **↑ MVP interno operável** | **~14** | |
-| 10 | Imagens e documentos | 1,5 | Radiografias, antes/depois, atestado, receita |
+| 10 | Imagens e documentos | 1,5 | ✅ pronta. Radiografias, antes/depois, atestado, receita, PDF do orçamento. Disco por padrão; S3/R2 pendente de bucket |
 | 11 | Dashboard e relatórios | 1,5 | Faturamento, ocupação, no-show, procedimentos |
 | 12 | Portal do paciente | 2,5 | Realm próprio. Ver agenda, orçamento, histórico. **Security review obrigatória** |
 | 13 | Convênios / TISS | 3–4 | Guias, glosa, conciliação de repasse, tabela ANS |
