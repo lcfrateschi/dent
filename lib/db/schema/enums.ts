@@ -141,6 +141,51 @@ export const statusParcelaEnum = pgEnum('status_parcela', [
  */
 export const baseComissaoEnum = pgEnum('base_comissao', ['valor_executado', 'valor_recebido'])
 
+// ── TISS / convênios (Fase 13) ────────────────────────────────────────────────
+/**
+ * Ciclo de vida da guia.
+ *
+ * `glosada_parcial` é estado próprio, não uma variação de `paga`: uma guia paga em
+ * parte tem dinheiro a recorrer e não pode desaparecer da fila de cobrança. Tratar
+ * como paga é como a clínica perde o que foi glosado.
+ */
+export const situacaoGuiaEnum = pgEnum('situacao_guia', [
+  'rascunho',
+  'enviada',
+  'em_analise',
+  'paga',
+  'glosada_parcial',
+  'glosada_total',
+  'cancelada',
+])
+
+export const situacaoItemGuiaEnum = pgEnum('situacao_item_guia', [
+  'apresentado',
+  'pago',
+  'glosado_parcial',
+  'glosado_total',
+  'em_recurso',
+  'reapresentado',
+])
+
+/**
+ * Classificação OPERACIONAL da glosa: o que fazer a respeito.
+ *
+ * Não é a Tabela 38 da ANS (motivos oficiais, dezenas de códigos) — o código da
+ * operadora vai em `glosa.codigo_operadora`. Esta classificação existe porque a
+ * ação é diferente para cada caso: erro de digitação se corrige e recorre;
+ * procedimento não coberto passa a ser do paciente. Ver lib/domain/convenio.ts.
+ */
+export const classeGlosaEnum = pgEnum('classe_glosa', [
+  'erro_de_envio',
+  'nao_coberto',
+  'elegibilidade',
+  'valor',
+  'falta_documento',
+  'prazo',
+  'outro',
+])
+
 // ── Documentos ────────────────────────────────────────────────────────────────
 export const tipoDocumentoEnum = pgEnum('tipo_documento', [
   'atestado',
@@ -190,7 +235,7 @@ export const interpretacaoRespostaEnum = pgEnum('interpretacao_resposta', [
   'nao_entendido',
 ])
 
-// ── Documentos ────────────────────────────────────────────────────────────────
+// ── Documentos: etapa clínica (Fase 10) ───────────────────────────────────────
 /**
  * Momento clínico da imagem, para a comparação antes/depois.
  *

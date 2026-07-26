@@ -59,7 +59,7 @@ npm run docker:up        # sobe tudo
 npm run docker:logs      # segue o log do app
 npm run docker:down      # para
 npm run docker:reset     # apaga o volume e recria o banco do zero
-npm run db:verificar     # prova as invariantes do banco (119 casos)
+npm run db:verificar     # prova as invariantes do banco (147 casos)
 ```
 
 Variante de produção (imagem enxuta, `output: standalone`, roda sem root):
@@ -84,9 +84,9 @@ npm run dev
 ## Testes
 
 ```bash
-npm test               # 751 testes (Vitest, sem banco)
+npm test               # 821 testes (Vitest, sem banco)
 npm run typecheck
-npm run db:verificar   # 119 invariantes no banco (precisa do compose de pé)
+npm run db:verificar   # 147 invariantes no banco (precisa do compose de pé)
 ```
 
 Os testes de domínio não tocam o banco de propósito: são as regras puras
@@ -243,6 +243,53 @@ Decisões que valem saber:
 - **"Não vou poder ir" não cancela**: registra o aviso para a recepção remarcar. Um
   toque errado no celular não pode custar o horário do paciente.
 
+## Convênios e TISS (Fase 13)
+
+```bash
+# o ciclo inteiro com os valores conferidos à mão (36 verificações)
+docker compose exec app npm run convenio:demo
+
+# quando a clínica baixar a Tabela 22 da ANS
+docker compose exec app npm run tuss:importar -- arquivo.csv
+```
+
+### ⚠️ O que está pronto e o que não está
+
+**Pronto e verificado** — o controle interno do faturamento: tabela negociada com
+vigência, elegibilidade (carência e carteirinha), coparticipação, montagem de guia,
+envio, retorno com glosa, recurso e **conciliação de repasse item a item**.
+
+**Não verificado** — a exportação em **XML TISS**. Ela existe e é XML bem formado
+(validado por parser), mas **nunca foi conferida contra o XSD oficial da ANS nem
+enviada a uma operadora real**. Não conte com ela para faturar.
+
+**Pendente de insumo** — o **código TUSS**. `procedimento.codigo_tuss` é nulo no
+seed *de propósito*: código inventado gera glosa, e glosa aparece semanas depois,
+quando o paciente já foi embora. A fonte é a Tabela 22 da ANS e o importador está
+pronto para recebê-la.
+
+O caminho que funciona hoje é a **folha de conferência** (`/api/convenios/guias/<id>/conferencia`):
+a recepção lê dela e digita no portal da operadora — que é como a maioria das
+clínicas pequenas fatura de verdade.
+
+### Decisões que valem saber
+
+- **O preço é o da DATA DA EXECUÇÃO**, não o de hoje. Tabela negociada muda por
+  reajuste; faturar em março um procedimento de janeiro com o preço de março é
+  glosa garantida.
+- **Coparticipação e repasse somam exato**, em centavos inteiros, e a sobra do
+  arredondamento vai para o **paciente**. Pedir um centavo a mais à operadora é
+  motivo de glosa do item inteiro; um centavo a mais do paciente ninguém discute.
+- **`glosada_parcial` é estado próprio**, não variação de "paga". Guia paga em
+  parte tem dinheiro a recorrer e não pode sair da fila de cobrança.
+- **A glosa é calculada**, não digitada: é `apresentado − pago`. Dois números
+  digitados podem discordar, e conciliação que não fecha é o que consome tempo.
+- **Conciliação item a item, nunca pelo total.** Um repasse que fecha no total pode
+  conter dois erros que se cancelam, e só a conferência por item mostra o que
+  recorrer.
+- **Recorrer de tudo é errado.** `orientacaoDeGlosa` diz onde vale insistir: erro
+  de preenchimento volta; prazo perdido não.
+
 ## Onde está o quê
 
 ```
@@ -277,6 +324,7 @@ lib/
   documentos/      anexo, emissão de atestado/receita e escritor de PDF
   relatorios/      agregações do painel e leitura da trilha de auditoria
   portal/          sessão, consultas e ações do paciente — sempre escopadas
+  tiss/            guia, glosa, recurso, repasse e exportação para a operadora
   odontograma/     tradução item_plano/execucao ↔ estado das faces
   pacientes/       schema Zod, consultas e server actions
   db/schema/       29 tabelas Drizzle, uma área do domínio por arquivo
@@ -289,6 +337,7 @@ drizzle/
   0009_mensageria_travas.sql    idempotência do envio e append-only das respostas
   0011_documento_travas.sql     anexo imutável, remoção lógica com autor
   0013_portal_travas.sql        convite de uso único, sessão que não ressuscita
+  0016_tiss_travas.sql          guia enviada imutável, glosa append-only
 docker/
   migrate.sh                 migrate + seed
   verificar-invariantes.sql  prova das invariantes
@@ -340,6 +389,10 @@ período da agenda, ambas com `aria-label`.
 | Realms sem FK entre si | verificado no catálogo por `drizzle/0013` e pela invariante 119 |
 | Convite de primeiro acesso é de uso único | trigger em `drizzle/0013` |
 | Login do portal não revela se a conta existe | `MENSAGEM_CREDENCIAL_INVALIDA` |
+| Guia enviada é imutável no que foi apresentado | triggers em `drizzle/0016` |
+| Glosa é append-only e não excede o item | triggers em `drizzle/0016` |
+| Repasse não distribui mais do que recebeu | constraint deferida em `drizzle/0016` |
+| Coparticipação e repasse somam exato | `ratearCobertura`, centavos inteiros |
 | Tokens do código = tokens do catálogo | `lib/ui/tokens.test.ts` |
 
 As três separações de acesso pedidas pela clínica, todas cobertas por teste:
@@ -350,7 +403,7 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 
 | Fase | Situação |
 |---|---|
-| 1 — Domínio e banco | pronta, verificada em Postgres real (119 invariantes) |
+| 1 — Domínio e banco | pronta, verificada em Postgres real (147 invariantes) |
 | 2 — Design system | tokens, componentes base, odontograma pronto |
 | 3 — Esqueleto, MFA, RBAC, CRUD de paciente | pronta |
 | 4 — Agenda | pronta |
@@ -362,4 +415,5 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 10 — Imagens e documentos | pronta (armazenamento em disco; S3/R2 pendente de bucket) |
 | 11 — Painel, relatórios e auditoria | pronta |
 | 12 — Portal do paciente | pronta, com revisão de segurança (29 verificações adversariais) |
-| 13+ | ver `ROADMAP.md` |
+| 13 — Convênios / TISS | controle interno pronto; **XML e código TUSS pendentes** (ver abaixo) |
+| 14 | ver `ROADMAP.md` |

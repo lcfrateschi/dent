@@ -46,7 +46,7 @@ const MENU: readonly ItemMenu[] = [
   { href: '/whatsapp', rotulo: 'WhatsApp', recursos: ['mensageria'], icone: 'whatsapp' },
   { href: '/financeiro', rotulo: 'Financeiro', recursos: ['cobranca'], icone: 'financeiro' },
   { href: '/auditoria', rotulo: 'Auditoria', recursos: ['auditoria'], icone: 'auditoria' },
-  { href: '/convenios', rotulo: 'Convênios', recursos: ['convenio'], icone: 'convenios', fase: 13 },
+  { href: '/convenios', rotulo: 'Convênios', recursos: ['convenio'], icone: 'convenios' },
   { href: '/usuarios', rotulo: 'Usuários', recursos: ['usuario'], icone: 'usuarios', fase: 3 },
 ]
 

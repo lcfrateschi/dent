@@ -74,7 +74,7 @@ Ele desconhece as EXCLUDE constraints e os triggers de `drizzle/0001_constraints
 derrubá-los silenciosamente — junto com o append-only do prontuário. O script foi removido do
 `package.json` de propósito. Use `db:generate` + `db:migrate`.
 
-Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 119 casos que provam
+Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 147 casos que provam
 as invariantes contra um Postgres real. O script **falha na hora** se uma tabela esperada não
 existir — um `espera_erro` com a tabela ausente "passa" pelo motivo errado, e isso já produziu
 um relatório verde provando invariante nenhuma.
@@ -101,9 +101,14 @@ um relatório verde provando invariante nenhuma.
   basta: o horário de envio já está gravado em `agendado_para`.
 - **`usuario.mfa_secret` está em texto claro.** Não é bypass de autenticação — ainda exige a
   senha — mas agrava um vazamento de banco. Cifrar exige chave fora do banco e rotação.
-- **`codigo_tuss` está nulo no seed, de propósito.** Código TUSS inventado gera glosa. A fonte
-  é a Terminologia Unificada em Saúde Suplementar da ANS (Tabela 22, procedimentos
-  odontológicos). Importar a versão vigente antes da Fase 13.
+- **`codigo_tuss` continua nulo, e é bloqueio real para faturar.** Código inventado gera glosa.
+  A fonte é a Tabela 22 da ANS (procedimentos odontológicos). O importador existe:
+  `npm run tuss:importar -- arquivo.csv`. Sem ele, a guia é montada mas glosada na entrada — a
+  tela avisa.
+- **O XML TISS NUNCA foi validado contra o XSD da ANS nem enviado a operadora real.** É XML bem
+  formado (conferido por parser), com escape correto e hash de epílogo — e isso é tudo o que se
+  pode afirmar. O caminho que fatura hoje é a folha de conferência, que a recepção digita no
+  portal da operadora. Ver o aviso no topo de `lib/tiss/exportar.ts`.
 - **Valores do catálogo são de partida** — revisar com a clínica.
 - **Termos ⚠️ do GLOSSARIO.md** ainda esperam validação com o dentista. Os que restam são de
   vocabulário (titular de convênio, encaixe, faturado), não de regra de cálculo.
@@ -118,6 +123,16 @@ um relatório verde provando invariante nenhuma.
   depois de chamar a Meta, ninguém sabe se ela entregou. A linha fica visível na tela de
   WhatsApp e a decisão é humana. Perder um lembrete custa uma ligação; mandar dois custa a
   confiança do paciente. A trigger de transição em `drizzle/0009` impede `enviando → pendente`.
+- **O preço do convênio é o da DATA DA EXECUÇÃO**, nunca o vigente hoje. `precoVigenteEm` existe
+  para isso. Faturar com o preço de hoje um procedimento de três meses atrás é glosa garantida.
+- **A sobra do arredondamento da coparticipação vai para o PACIENTE.** Pedir um centavo a mais à
+  operadora é motivo de glosa do item inteiro; um centavo a mais do paciente ninguém discute.
+- **Glosa é CALCULADA (`apresentado − pago`), nunca digitada.** Campo de glosa digitado divergindo
+  do repasse é conciliação que não fecha nunca.
+- **`glosada_parcial` não é "paga".** Guia paga em parte tem valor a recorrer e continua na fila.
+- **Dentro de um template `sql` do Drizzle, `${tabela.coluna}` renderiza SEM qualificar a tabela.**
+  Em subconsulta com join, isso vira `column reference "id" is ambiguous`. Escreva
+  `"tabela"."coluna"` literal — ver `painelDeConvenios`.
 - **Caixa e produção NUNCA são somados.** São grandezas diferentes — executado em
   julho pode entrar em outubro, e a comissão é sobre o recebido. Não existe função
   que devolva a soma dos dois, e não deve passar a existir. Ver

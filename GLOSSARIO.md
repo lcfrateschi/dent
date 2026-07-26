@@ -91,6 +91,14 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **Guia** | Documento enviado ao convênio pedindo pagamento dos procedimentos executados. |
 | **Glosa** | Recusa, total ou parcial, de um item da guia pelo convênio. Precisa de motivo e permite recurso. |
 | **Repasse** | Pagamento do convênio para a clínica, geralmente agregando muitas guias. Exige conciliação item a item. |
+| **Coparticipação** | Parte do valor que o paciente paga quando o plano cobre menos de 100%. Somada à parte da operadora, dá exatamente o total — a sobra do arredondamento é do paciente. |
+| **Carência** | Prazo, contado da **adesão do paciente** ao plano, antes do qual o procedimento não é coberto. Sem data de adesão cadastrada, o sistema NÃO assume que passou. |
+| **Vigência** | Período em que uma tabela negociada vale. O preço de um procedimento é o vigente na **data da execução**, não o de hoje. |
+| **Lote** | Conjunto de guias enviado de uma vez. É como a operadora identifica o protocolo. |
+| **Glosa parcial** | A operadora pagou menos que o apresentado. Estado próprio, distinto de "paga": há valor a recorrer. |
+| **Recurso de glosa** | Contestação da glosa, com argumento e documento. Vale para erro de preenchimento e falta de documento; não vale para prazo perdido. |
+| **Folha de conferência** | Impresso com os campos da guia, para digitar no portal da operadora. É o caminho que fatura hoje — o XML TISS ainda não foi validado. |
+| **TUSS** | Terminologia Unificada em Saúde Suplementar. O código vem da Tabela 22 da ANS e **não pode ser inventado**: código errado gera glosa. |
 
 ## Documentos e imagens
 

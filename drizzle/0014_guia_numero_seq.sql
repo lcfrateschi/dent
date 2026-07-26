@@ -1,0 +1,15 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- Fase 13 — sequence do número de guia.
+--
+-- Precisa existir ANTES da tabela, porque a coluna a usa como DEFAULT.
+--
+-- Sequence e não `max(numero) + 1`: dois faturamentos simultâneos leriam o mesmo
+-- máximo e gerariam guias com o mesmo número. Número repetido de guia é rejeição
+-- no protocolo da operadora — e é o tipo de erro que só aparece no dia em que duas
+-- pessoas faturam ao mesmo tempo.
+--
+-- A sequence "pula" números em transação abortada, e isso é aceitável: a operadora
+-- exige número ÚNICO e crescente, não contíguo. Garantir contiguidade exigiria
+-- serializar o faturamento inteiro.
+-- ════════════════════════════════════════════════════════════════════════════
+CREATE SEQUENCE IF NOT EXISTS "guia_numero_seq" AS bigint START 1;

@@ -991,6 +991,232 @@ SELECT espera_ok('portal: NENHUMA FK entre o realm do paciente e "usuario"', ARR
   END $x$
 $$]);
 
+-- ── 13. Convênio: guia, glosa e repasse ─────────────────────────────────────
+--
+-- Dinheiro que vem de terceiro, com prazo e com direito de recusar. Guia enviada é
+-- documento apresentado a outra empresa: o que ela diz não muda depois.
+-- ────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF to_regclass('guia_tiss') IS NULL OR to_regclass('repasse_item') IS NULL THEN
+    RAISE EXCEPTION 'tabelas do TISS não existem — rode as migrations 0014/0015/0016';
+  END IF;
+END $$;
+
+SET CONSTRAINTS ALL DEFERRED;
+
+INSERT INTO convenio (id, nome, registro_ans, prazo_pagamento_dias) VALUES
+  ('cccc0000-0000-4000-8000-000000000001', 'Convênio Teste', '123456', 30);
+
+-- Usa o SEGUNDO paciente: o primeiro já tem plano ativo, e a trava da Fase 6
+-- (um plano ativo por paciente) recusaria outro — corretamente.
+INSERT INTO paciente_convenio (id, paciente_id, convenio_id, numero_carteirinha, adesao_em) VALUES
+  ('cccc0000-0000-4000-8000-000000000002',
+   '33333333-3333-3333-3333-333333333335',
+   'cccc0000-0000-4000-8000-000000000001', 'CART-001', '2025-01-01');
+
+-- Plano com dois itens de CONVÊNIO, para virarem guia.
+INSERT INTO plano_tratamento (id, paciente_id, profissional_id, status, titulo) VALUES
+  ('dddd0000-0000-4000-8000-000000000001',
+   '33333333-3333-3333-3333-333333333335',
+   '22222222-2222-2222-2222-222222222221', 'ativo', 'Plano convênio');
+
+INSERT INTO item_plano (id, plano_id, procedimento_id, cobertura, convenio_id, valor, status) VALUES
+  ('eeee0000-0000-4000-8000-000000000001', 'dddd0000-0000-4000-8000-000000000001',
+   (SELECT id FROM procedimento LIMIT 1), 'convenio',
+   'cccc0000-0000-4000-8000-000000000001', '100.00', 'executado'),
+  ('eeee0000-0000-4000-8000-000000000002', 'dddd0000-0000-4000-8000-000000000001',
+   (SELECT id FROM procedimento LIMIT 1), 'convenio',
+   'cccc0000-0000-4000-8000-000000000001', '100.00', 'executado');
+
+SELECT espera_erro('convênio: item PARTICULAR apontando para guia', ARRAY[$$
+  INSERT INTO guia_tiss (id, convenio_id, paciente_id, numero_carteirinha, profissional_id, valor_apresentado)
+  VALUES ('ffff0000-0000-4000-8000-000000000001',
+          'cccc0000-0000-4000-8000-000000000001',
+          '33333333-3333-3333-3333-333333333335', 'CART-001',
+          '22222222-2222-2222-2222-222222222221', '100.00')
+$$, $$
+  INSERT INTO item_plano (id, plano_id, procedimento_id, cobertura, valor, status, guia_tiss_id)
+  VALUES ('eeee0000-0000-4000-8000-000000000009',
+          'dddd0000-0000-4000-8000-000000000001',
+          (SELECT id FROM procedimento LIMIT 1),
+          'particular', '50.00', 'executado', 'ffff0000-0000-4000-8000-000000000001')
+$$]);
+
+SELECT espera_ok('convênio: montar guia rascunho com dois itens', ARRAY[$$
+  INSERT INTO guia_tiss (id, convenio_id, paciente_id, numero_carteirinha, profissional_id, valor_apresentado)
+  VALUES ('ffff0000-0000-4000-8000-000000000002',
+          'cccc0000-0000-4000-8000-000000000001',
+          '33333333-3333-3333-3333-333333333335', 'CART-001',
+          '22222222-2222-2222-2222-222222222221', '200.00')
+$$, $$
+  INSERT INTO item_guia (id, guia_id, item_plano_id, descricao, valor_apresentado, data_execucao)
+  VALUES ('99990000-0000-4000-8000-000000000001',
+          'ffff0000-0000-4000-8000-000000000002',
+          'eeee0000-0000-4000-8000-000000000001', 'Procedimento A', '100.00', '2026-06-01'),
+         ('99990000-0000-4000-8000-000000000002',
+          'ffff0000-0000-4000-8000-000000000002',
+          'eeee0000-0000-4000-8000-000000000002', 'Procedimento B', '100.00', '2026-06-02')
+$$], true);
+
+SELECT espera_erro('convênio: enviar guia com soma dos itens diferente do total', ARRAY[$$
+  UPDATE guia_tiss SET valor_apresentado='999.00', situacao='enviada', enviada_em=now()
+   WHERE id='ffff0000-0000-4000-8000-000000000002'
+$$], true);
+
+SELECT espera_ok('convênio: enviar a guia', ARRAY[$$
+  UPDATE guia_tiss SET situacao='enviada', enviada_em=now(), numero_lote='LOTE-1'
+   WHERE id='ffff0000-0000-4000-8000-000000000002'
+$$], true);
+
+SELECT espera_erro('convênio: mudar o valor de guia JÁ ENVIADA', ARRAY[$$
+  UPDATE guia_tiss SET valor_apresentado='300.00'
+   WHERE id='ffff0000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_erro('convênio: mudar o paciente de guia enviada', ARRAY[$$
+  UPDATE guia_tiss SET paciente_id='33333333-3333-3333-3333-333333333333'
+   WHERE id='ffff0000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_erro('convênio: reescrever a data de envio', ARRAY[$$
+  UPDATE guia_tiss SET enviada_em=now() - interval '10 days'
+   WHERE id='ffff0000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_ok('convênio: registrar o retorno da operadora', ARRAY[$$
+  UPDATE guia_tiss SET situacao='glosada_parcial', retorno_em=now(),
+         protocolo_operadora='PROT-9'
+   WHERE id='ffff0000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_erro('convênio: ACRESCENTAR item a guia já enviada', ARRAY[$$
+  INSERT INTO item_guia (guia_id, item_plano_id, descricao, valor_apresentado, data_execucao)
+  VALUES ('ffff0000-0000-4000-8000-000000000002',
+          'eeee0000-0000-4000-8000-000000000001', 'Extra', '10.00', '2026-06-03')
+$$]);
+
+SELECT espera_erro('convênio: alterar valor de item de guia enviada', ARRAY[$$
+  UPDATE item_guia SET valor_apresentado='150.00'
+   WHERE id='99990000-0000-4000-8000-000000000001'
+$$]);
+
+SELECT espera_erro('convênio: excluir item de guia enviada', ARRAY[$$
+  DELETE FROM item_guia WHERE id='99990000-0000-4000-8000-000000000001'
+$$]);
+
+SELECT espera_ok('convênio: registrar glosa parcial num item', ARRAY[$$
+  INSERT INTO glosa (id, item_guia_id, classe, motivo, valor)
+  VALUES ('88880000-0000-4000-8000-000000000001',
+          '99990000-0000-4000-8000-000000000001',
+          'erro_de_envio', 'Dente divergente do informado', '40.00')
+$$]);
+
+SELECT espera_erro('convênio: glosa MAIOR que o valor apresentado', ARRAY[$$
+  INSERT INTO glosa (item_guia_id, classe, motivo, valor)
+  VALUES ('99990000-0000-4000-8000-000000000001', 'valor', 'Excede', '61.00')
+$$]);
+
+SELECT espera_erro('convênio: editar glosa registrada', ARRAY[$$
+  UPDATE glosa SET valor='10.00' WHERE id='88880000-0000-4000-8000-000000000001'
+$$]);
+
+SELECT espera_erro('convênio: excluir glosa', ARRAY[$$
+  DELETE FROM glosa WHERE id='88880000-0000-4000-8000-000000000001'
+$$]);
+
+SELECT espera_ok('convênio: recorrer da glosa', ARRAY[$$
+  INSERT INTO recurso_glosa (glosa_id, argumento)
+  VALUES ('88880000-0000-4000-8000-000000000001', 'Dente 36 confere com a radiografia anexa.')
+$$]);
+
+SELECT espera_erro('convênio: recurso com resposta pela metade', ARRAY[$$
+  INSERT INTO recurso_glosa (glosa_id, argumento, deferido)
+  VALUES ('88880000-0000-4000-8000-000000000001', 'Outro argumento', true)
+$$]);
+
+-- Repasse e conciliação item a item.
+SELECT espera_ok('convênio: registrar repasse e conciliar itens', ARRAY[$$
+  INSERT INTO repasse (id, convenio_id, valor_total, recebido_em)
+  VALUES ('77770000-0000-4000-8000-000000000001',
+          'cccc0000-0000-4000-8000-000000000001', '160.00', '2026-07-15')
+$$, $$
+  INSERT INTO repasse_item (repasse_id, item_guia_id, valor)
+  VALUES ('77770000-0000-4000-8000-000000000001',
+          '99990000-0000-4000-8000-000000000001', '60.00'),
+         ('77770000-0000-4000-8000-000000000001',
+          '99990000-0000-4000-8000-000000000002', '100.00')
+$$], true);
+
+SELECT espera_ok('convênio: o banco recalculou o valor pago da guia', ARRAY[$$
+  DO $x$ DECLARE v numeric; BEGIN
+    SELECT valor_pago INTO v FROM guia_tiss WHERE id='ffff0000-0000-4000-8000-000000000002';
+    IF v <> 160.00 THEN RAISE EXCEPTION 'valor_pago ficou % em vez de 160.00', v; END IF;
+  END $x$
+$$]);
+
+SELECT espera_erro('convênio: conciliar MAIS do que o repasse recebeu', ARRAY[$$
+  INSERT INTO repasse (id, convenio_id, valor_total, recebido_em)
+  VALUES ('77770000-0000-4000-8000-000000000002',
+          'cccc0000-0000-4000-8000-000000000001', '50.00', '2026-07-16')
+$$, $$
+  INSERT INTO repasse_item (repasse_id, item_guia_id, valor)
+  VALUES ('77770000-0000-4000-8000-000000000002',
+          '99990000-0000-4000-8000-000000000001', '80.00')
+$$], true);
+
+SELECT espera_erro('convênio: o mesmo item recebendo duas vezes do mesmo repasse', ARRAY[$$
+  INSERT INTO repasse_item (repasse_id, item_guia_id, valor)
+  VALUES ('77770000-0000-4000-8000-000000000001',
+          '99990000-0000-4000-8000-000000000001', '10.00')
+$$]);
+
+SELECT espera_ok('convênio: fechar o repasse', ARRAY[$$
+  UPDATE repasse SET fechado_em=now() WHERE id='77770000-0000-4000-8000-000000000001'
+$$]);
+
+SELECT espera_erro('convênio: mexer na conciliação de repasse FECHADO', ARRAY[$$
+  DELETE FROM repasse_item
+   WHERE repasse_id='77770000-0000-4000-8000-000000000001'
+     AND item_guia_id='99990000-0000-4000-8000-000000000002'
+$$]);
+
+SELECT espera_erro('convênio: dois itens iguais na mesma guia e tentativa', ARRAY[$$
+  INSERT INTO guia_tiss (id, convenio_id, paciente_id, numero_carteirinha, profissional_id, valor_apresentado)
+  VALUES ('ffff0000-0000-4000-8000-000000000003',
+          'cccc0000-0000-4000-8000-000000000001',
+          '33333333-3333-3333-3333-333333333335', 'CART-001',
+          '22222222-2222-2222-2222-222222222221', '200.00')
+$$, $$
+  INSERT INTO item_guia (guia_id, item_plano_id, descricao, valor_apresentado, data_execucao)
+  VALUES ('ffff0000-0000-4000-8000-000000000003',
+          'eeee0000-0000-4000-8000-000000000001', 'A', '100.00', '2026-06-01'),
+         ('ffff0000-0000-4000-8000-000000000003',
+          'eeee0000-0000-4000-8000-000000000001', 'A de novo', '100.00', '2026-06-01')
+$$]);
+
+SELECT espera_erro('convênio: dois convênios com o mesmo nome', ARRAY[$$
+  INSERT INTO convenio (nome) VALUES ('Convênio Teste')
+$$]);
+
+SELECT espera_erro('convênio: mesma carteirinha duas vezes na operadora', ARRAY[$$
+  INSERT INTO paciente_convenio (paciente_id, convenio_id, numero_carteirinha)
+  VALUES ('33333333-3333-3333-3333-333333333333',
+          'cccc0000-0000-4000-8000-000000000001', 'CART-001')
+$$]);
+
+SELECT espera_erro('convênio: cobertura fora da faixa de 0 a 100', ARRAY[$$
+  INSERT INTO preco_convenio (convenio_id, procedimento_id, valor, cobertura_pct, vigencia_inicio)
+  VALUES ('cccc0000-0000-4000-8000-000000000001',
+          (SELECT id FROM procedimento LIMIT 1), '100.00', '120', '2026-01-01')
+$$]);
+
+SELECT espera_erro('convênio: vigência com fim antes do início', ARRAY[$$
+  INSERT INTO preco_convenio (convenio_id, procedimento_id, valor, vigencia_inicio, vigencia_fim)
+  VALUES ('cccc0000-0000-4000-8000-000000000001',
+          (SELECT id FROM procedimento LIMIT 1), '100.00', '2026-06-01', '2026-01-01')
+$$]);
+
 -- ── Relatório ───────────────────────────────────────────────────────────────
 \echo ''
 \echo '════════════════════════════════════════════════════════════════════════'

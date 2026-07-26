@@ -16,6 +16,8 @@
     "documentos:demo": "tsx lib/documentos/demonstrar.ts",
     "relatorios:demo": "tsx lib/relatorios/demonstrar.ts",
     "portal:seguranca": "tsx lib/portal/revisao-seguranca.ts",
+    "tuss:importar": "tsx lib/tiss/importarTuss.ts",
+    "convenio:demo": "tsx lib/tiss/demonstrar.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
