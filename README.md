@@ -4,6 +4,7 @@
 para clínicas e consultórios crescerem com mais eficiência, organização e cuidado
 ao paciente — gestão odontológica *simples, inteligente e humana*.
 
+- **`ROTEIRO-DE-TESTE.md`** — passo a passo para testar tudo, com credenciais
 - **`ROADMAP.md`** — as fases e a ordem
 - **`GLOSSARIO.md`** — a linguagem do domínio
 - **`CLAUDE.md`** — decisões arquiteturais e armadilhas
@@ -23,6 +24,18 @@ Isso é tudo. O compose, em ordem:
 
 Nenhum `.env` é necessário para desenvolvimento — os defaults estão no
 `docker-compose.yml`.
+
+Para um ambiente com dados realistas e credenciais prontas (clínica configurada,
+quatro perfis, três pacientes, agenda, plano, cobrança vencida, estoque com lote
+vencendo):
+
+```bash
+docker compose exec app npm run demo:preparar   # imprime as credenciais
+docker compose exec app npm run demo:codigo     # código MFA, sem celular à mão
+docker compose exec app npm run demo:limpar     # remove só o que ele criou
+```
+
+O passo a passo de teste está em **`ROTEIRO-DE-TESTE.md`**.
 
 > **Vindo de uma cópia anterior a "Facilident"?** O projeto do compose mudou de
 > nome (`dent` → `facilident`), e com ele os volumes: os antigos ficam órfãos, com
