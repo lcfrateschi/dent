@@ -32,6 +32,13 @@ CMD ["npm", "run", "dev"]
 FROM node:${NODE_VERSION} AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+# Explícito, e não por herança: com NODE_ENV=development o `next build` monta um
+# bundle misto e a exportação do /404 falha com
+# `<Html> should not be imported outside of pages/_document` — mensagem que não
+# diz nada sobre a causa. Reproduz num app Next de quatro linhas, então não é
+# nada deste projeto. É o motivo de `npm run build` dentro do container `dev`
+# (que tem NODE_ENV=development) precisar de `NODE_ENV=production` na frente.
+ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

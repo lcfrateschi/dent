@@ -62,6 +62,24 @@ O que **funciona no host** mesmo com Node 18: `npm test`, `npm run typecheck`,
 
 **Ao subir o host para Node 20+**, atualize o Vitest para `^4` e remova esta seção.
 
+### `next build` exige `NODE_ENV=production`
+
+Com `NODE_ENV=development` o build monta um bundle misto e a exportação do `/404` falha com
+`<Html> should not be imported outside of pages/_document` — mensagem que não diz nada sobre a
+causa. **Reproduz num app Next de quatro linhas**, então não é nada deste projeto. O container
+`dev` tem `NODE_ENV=development`, por isso `npm run build` já força o valor certo, e o estágio
+`build` do Dockerfile o declara explicitamente.
+
+Duas coisas relacionadas, que só apareceram quando o build passou a rodar:
+
+- **Nada de segredo ou banco na importação de módulo.** A coleta de rotas importa cada página e
+  cada rota de API. `exigirSegredoDeProducao()` sai fora durante `phase-production-build` e o
+  cliente do banco é preguiçoso (`lib/db/index.ts`) — senão construir a imagem exigiria o App
+  Secret da Meta e um Postgres de pé. Compilar não é servir.
+- **Componente cliente não importa módulo com `node:crypto`.** Foi o que quebrou o build da
+  Fase 12 sem que `npm test` ou `tsc` reclamassem: `AcessoAoPortal.tsx` importava
+  `lib/auth/convite.ts`. A parte pura mora em `lib/auth/conviteTexto.ts`.
+
 ### TypeScript
 
 Travado em **`^5.9`**. O TypeScript 7 (compilador nativo) quebra o carregador de

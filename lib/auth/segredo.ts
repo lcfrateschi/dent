@@ -22,6 +22,20 @@ const SEGREDO_WHATSAPP_DEV = 'dev-whatsapp-app-secret-trocar-em-producao'
 export function exigirSegredoDeProducao(): void {
   if (process.env.NODE_ENV !== 'production') return
 
+  /**
+   * Durante `next build` esta checagem não se aplica.
+   *
+   * O build roda com `NODE_ENV=production` (é o que faz o bundle ser de
+   * produção) e importa os módulos das páginas para coletar rotas — o que
+   * executava esta função e fazia o **build da imagem exigir os segredos de
+   * produção**. Compilar não é servir: quem constrói a imagem no CI não deve
+   * precisar do App Secret da Meta.
+   *
+   * A garantia continua inteira: `phase-production-build` só existe dentro do
+   * `next build`. Ao subir o servidor e a cada requisição, a checagem vale.
+   */
+  if (process.env.NEXT_PHASE === 'phase-production-build') return
+
   const whatsapp = process.env.WHATSAPP_APP_SECRET
   if (whatsapp === SEGREDO_WHATSAPP_DEV) {
     throw new Error(

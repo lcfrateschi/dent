@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/Button'
 import { Alerta } from '@/components/ui/Input'
 import { Icone } from '@/components/ui/Icone'
-import { formatarConvite } from '@/lib/auth/convite'
+import { formatarConvite } from '@/lib/auth/conviteTexto'
 import { liberarAcessoAoPortal, revogarAcessoAoPortal } from '@/lib/pacientes/acessoPortal'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'

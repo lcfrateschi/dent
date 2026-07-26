@@ -1,4 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+// A parte pura mora em `conviteTexto.ts` — este arquivo importa `node:crypto` e
+// não pode ser alcançado por componente cliente. Reexportado abaixo para os
+// chamadores de servidor continuarem com um só import.
+import { formatarConvite, normalizar } from './conviteTexto'
 
 /**
  * Convite de primeiro acesso ao portal.
@@ -67,18 +71,6 @@ export function hashDoToken(token: string): string {
 }
 
 /**
- * Normaliza o que o paciente digitou.
- *
- * Ele vai receber `A3F7-K92M-...` num papel e digitar com espaço, com hífen, em
- * minúscula. Recusar por causa disso transformaria um erro de digitação em
- * chamada telefônica. O que **não** é tolerado é caractere fora do alfabeto —
- * `O` em vez de `0` não existe aqui porque o alfabeto não tem nenhum dos dois.
- */
-export function normalizar(token: string): string {
-  return token.toUpperCase().replace(/[^A-Z0-9]/g, '')
-}
-
-/**
  * Confere o token contra o hash guardado, em tempo constante.
  *
  * `timingSafeEqual` porque a comparação `===` sai no primeiro byte diferente, e a
@@ -97,11 +89,6 @@ export function conferirConvite(token: string, hashGuardado: string | null): boo
   const b = Buffer.from(hashGuardado.toLowerCase(), 'hex')
   if (a.length !== b.length) return false
   return timingSafeEqual(a, b)
-}
-
-/** `A3F7-K92M-XY4B-...` — em blocos de 4, para ler e digitar sem errar. */
-export function formatarConvite(token: string): string {
-  return (normalizar(token).match(/.{1,4}/g) ?? []).join('-')
 }
 
 /** `true` se o prazo do convite passou. */
@@ -129,3 +116,5 @@ export function gerarTokenDeSessao(): { token: string; hash: string } {
 export function hashDoTokenDeSessao(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex')
 }
+
+export { formatarConvite, normalizar }
