@@ -258,3 +258,45 @@ export const acaoAuditEnum = pgEnum('acao_audit', [
   'login_falho',
   'logout',
 ])
+
+// ── Estoque ───────────────────────────────────────────────────────────────────
+export const categoriaMaterialEnum = pgEnum('categoria_material', [
+  'anestesico',
+  'restaurador',
+  'endodontia',
+  'cirurgia',
+  'protese',
+  'ortodontia',
+  'radiologia',
+  'descartavel',
+  'instrumental',
+  'esterilizacao',
+  'medicamento',
+  'escritorio',
+])
+
+/** Unidade de CONSUMO — o que sai do armário, não o que vem do fornecedor. */
+export const unidadeMaterialEnum = pgEnum('unidade_material', [
+  'unidade',
+  'tubete',
+  'caixa',
+  'frasco',
+  'ml',
+  'g',
+  'par',
+  'rolo',
+  'folha',
+])
+
+/**
+ * Tipos de movimento. `ajuste` é o único que vai nos dois sentidos, e exige
+ * motivo: sem ele, perda de material e erro de lançamento ficam indistinguíveis
+ * — e é justamente essa diferença que a clínica precisa enxergar.
+ */
+export const tipoMovimentoEstoqueEnum = pgEnum('tipo_movimento_estoque', [
+  'entrada',
+  'consumo',
+  'descarte',
+  'devolucao',
+  'ajuste',
+])

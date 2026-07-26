@@ -19,6 +19,7 @@ import {
   Send,
   type LucideIcon,
   Minus,
+  Package,
   Pencil,
   Plus,
   ScrollText,
@@ -67,6 +68,7 @@ export const ICONES = {
   anamnese: ClipboardList,
   whatsapp: MessageCircle,
   documentos: ImagemIcone,
+  estoque: Package,
 
   // Ações
   novo: Plus,

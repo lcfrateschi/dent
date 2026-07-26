@@ -86,13 +86,21 @@ Travado em **`^5.9`**. O TypeScript 7 (compilador nativo) quebra o carregador de
 `next.config.ts` do Next 15 — erro `Cannot read properties of undefined (reading 'fileExists')`.
 Reavaliar quando o Next declarar suporte.
 
+### A ordem das migrations é o campo `when`, não o número do arquivo
+
+O `drizzle-kit migrate` decide o que aplicar comparando o `when` de
+`drizzle/meta/_journal.json`. Se uma migration gerada receber um `when` **menor** que o da
+anterior — acontece quando as entradas manuais foram escritas com timestamp "redondo" —
+`drizzle-kit migrate` **pula em silêncio**, imprime `applying migrations…` e sai com código 0.
+Ao adicionar SQL manual ao journal, mantenha `when` crescente.
+
 ### Nunca use `drizzle-kit push`
 
 Ele desconhece as EXCLUDE constraints e os triggers de `drizzle/0001_constraints.sql` e pode
 derrubá-los silenciosamente — junto com o append-only do prontuário. O script foi removido do
 `package.json` de propósito. Use `db:generate` + `db:migrate`.
 
-Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 147 casos que provam
+Depois de mexer em constraint ou trigger, rode `npm run db:verificar`: são 178 casos que provam
 as invariantes contra um Postgres real. O script **falha na hora** se uma tabela esperada não
 existir — um `espera_erro` com a tabela ausente "passa" pelo motivo errado, e isso já produziu
 um relatório verde provando invariante nenhuma.
@@ -131,6 +139,10 @@ um relatório verde provando invariante nenhuma.
   pode afirmar. O caminho que fatura hoje é a folha de conferência, que a recepção digita no
   portal da operadora. Ver o aviso no topo de `lib/tiss/exportar.ts`.
 - **Valores do catálogo são de partida** — revisar com a clínica.
+- **Os mínimos de estoque e as fichas técnicas do seed são de partida.** Foram postos na ordem
+  de grandeza de um consultório de duas cadeiras. O número certo sai do consumo real: depois de
+  um mês de movimento, a tela mostra média diária e cobertura em dias. O seed **não** cria
+  saldo — estoque inicial é contagem física.
 - **Termos ⚠️ do GLOSSARIO.md** ainda esperam validação com o dentista. Os que restam são de
   vocabulário (titular de convênio, encaixe, faturado), não de regra de cálculo.
 
@@ -196,11 +208,14 @@ um relatório verde provando invariante nenhuma.
 lib/
   db/
     schema/        tabelas Drizzle, um arquivo por área do domínio
-    seed/          dados de referência (52 dentes FDI, catálogo TUSS, perfis)
-    index.ts       cliente de conexão
+    seed/          dados de referência (52 dentes, catálogo TUSS, materiais, perfis)
+    index.ts       cliente de conexão (preguiçoso — ver seção do build)
   domain/          regras puras + .test.ts ao lado
-drizzle/           migrations geradas + SQL manual de constraints
-app/               (Fase 3) (staff)/ e (portal)/ separados
+  <área>/          consultas + núcleo com Ator + acoes.ts fino + demonstrar.ts
+                   (mensageria, documentos, relatorios, portal, tiss, estoque)
+dados/             tabelas oficiais baixadas (Tabela 22 da ANS) + procedência
+drizzle/           migrations geradas + SQL manual de constraints e triggers
+app/               (staff)/ e (portal)/ separados
 ```
 
 ## Convenções
@@ -224,7 +239,13 @@ npm run db:migrate    # aplica (precisa de DATABASE_URL)
 npm run db:seed       # popula dados de referência
 npm test              # vitest
 npm run typecheck     # tsc --noEmit
+npm run build         # next build (força NODE_ENV=production — ver abaixo)
 ```
+
+Demonstrações que rodam contra o Postgres e conferem número, não fluxo:
+`whatsapp:demo`, `documentos:demo`, `relatorios:demo`, `convenio:demo`,
+`estoque:demo`. Verificações por HTTP com sessão real: `portal:seguranca`,
+`estoque:telas`.
 
 ## Armadilhas do domínio (já custaram retrabalho em outros sistemas)
 
@@ -239,3 +260,13 @@ npm run typecheck     # tsc --noEmit
 - **Orçamento é um documento congelado**, não uma view do plano. Se o plano mudar, o orçamento
   já enviado não muda — gera-se outro.
 - **Menor de idade** tem `responsavel_legal_id`. Consentimento e assinatura são do responsável.
+- **Estoque sai por FEFO, não FIFO.** Vence primeiro, sai primeiro — mesmo que tenha chegado
+  depois. A compra de reposição costuma vir com validade mais curta que a caixa que já está na
+  prateleira, e consumir por ordem de chegada deixa o lote curto vencer com saldo.
+- **Validade de lote é dia civil no fuso da clínica.** Lote que vence 31/07 serve até o fim do
+  dia 31/07 em São Paulo — que já é 01/08 em UTC. Há `hoje_na_clinica()` no banco para isso.
+- **Quantidade de material não é sempre inteira** (ml, g). `lib/domain/quantidade.ts` faz a
+  aritmética em milésimos inteiros, pelo mesmo motivo de `dinheiro.ts` usar centavos.
+- **A unidade do material é a de CONSUMO, não a de compra.** Lançar "2" ao receber 2 caixas de
+  100 luvas é entrada válida para o banco e alerta de mínimo que nunca dispara. A conversão é
+  `unidades_por_embalagem`.

@@ -232,4 +232,32 @@ describe('classificação de recurso clínico', () => {
     // A exceção: recepção lê alerta clínico, por segurança do paciente.
     expect(pode('recepcao', 'alerta_clinico', 'ler')).toBe(true)
   })
+
+  describe('estoque — três perfis, três papéis sobre a mesma tabela', () => {
+    it('dentista dá baixa do que usou, mas não mexe no inventário', () => {
+      expect(pode('dentista', 'estoque', 'criar')).toBe(true)
+      expect(pode('dentista', 'estoque', 'editar')).toBe(false)
+      expect(pode('dentista', 'estoque', 'excluir')).toBe(false)
+    })
+
+    it('financeiro confere custo e exporta, mas não dá baixa', () => {
+      // Baixa é fato clínico-operacional: quem não estava na cadeira não sabe
+      // qual lote saiu, e um consumo lançado por terceiro corrompe a
+      // rastreabilidade justamente onde ela importa (implante recolhido).
+      expect(pode('financeiro', 'estoque', 'ler')).toBe(true)
+      expect(pode('financeiro', 'estoque', 'exportar')).toBe(true)
+      expect(pode('financeiro', 'estoque', 'criar')).toBe(false)
+      expect(pode('financeiro', 'estoque', 'editar')).toBe(false)
+    })
+
+    it('recepção lança entrada e faz a contagem', () => {
+      expect(pode('recepcao', 'estoque', 'criar')).toBe(true)
+      expect(pode('recepcao', 'estoque', 'editar')).toBe(true)
+      expect(pode('recepcao', 'estoque', 'excluir')).toBe(false)
+    })
+
+    it('estoque NÃO é recurso clínico — não dispara auditoria de prontuário', () => {
+      expect(ehRecursoClinico('estoque')).toBe(false)
+    })
+  })
 })

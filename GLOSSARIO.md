@@ -150,6 +150,23 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **IDOR** | Ler dado de outro trocando um id na URL. No portal é impossível por construção: nenhuma consulta aceita `pacienteId` — ele vem sempre da sessão. |
 | **Bloqueio por tentativas** | Atraso crescente (1, 5, 15, 60 min) depois de 3 erros. Nunca permanente: bloqueio eterno seria negação de serviço contra o paciente. |
 
+## Estoque (Fase 14)
+
+| Termo | Definição |
+|---|---|
+| **Material** | Insumo do consultório: anestésico, resina, luva, implante. A `unidade` é a de **consumo** (tubete, par, ml), não a de compra. |
+| **Embalagem** | Como o fornecedor vende. `unidades_por_embalagem` converte no recebimento: 2 caixas de 100 luvas entram como 200, não como 2. |
+| **Lote de material** | Um recebimento: material + lote do fabricante + validade + custo. Chama-se `lote_material` porque no TISS "lote" é o protocolo que agrupa guias — dois "lotes" no mesmo sistema seria ambiguidade garantida. |
+| **Saldo** | Soma dos movimentos do lote. Nunca um número digitado: é mantido por trigger e tem CHECK de não-negativo. |
+| **Movimento** | Linha do livro de estoque: entrada, consumo, descarte, devolução, ajuste. Quantidade **assinada** (entrada positiva, saídas negativas). **Append-only**, como a evolução. |
+| **FEFO** | *First Expired, First Out* — sai primeiro o que **vence** primeiro, não o que chegou primeiro. Não é sinônimo de FIFO: a compra de reposição costuma vir com validade mais curta que a caixa que está na prateleira. |
+| **Ajuste de inventário** | Movimento que acerta o saldo pelo que foi **contado**. Exige motivo: sem ele, perda de material e erro de lançamento ficam indistinguíveis. |
+| **Ponto de reposição** | `quantidade_minima`. Abaixo dele o material entra na lista de compras. A sugestão repõe ao **dobro** do mínimo — repor ao mínimo faria o alerta disparar no dia seguinte à entrega. |
+| **Cobertura** | Dias que o saldo cobre no ritmo de consumo dos últimos 90 dias. Sem consumo no período não há projeção (nem "infinito"). |
+| **Ficha técnica** | `insumo_procedimento`: o que cada procedimento consome. Serve para **propor** a baixa, nunca para executá-la sozinha — rastreabilidade que afirma um lote não usado é pior que nenhuma. |
+| **Rastreabilidade de lote** | Responder "em quais pacientes este lote foi usado" quando o fabricante recolhe um lote. É o motivo de `movimento_estoque.execucao_id` existir. |
+| **Material controlado** | Sujeito à Portaria 344/98 da Anvisa. Toda saída exige profissional responsável e motivo — cobrado por trigger, não por disciplina de tela. |
+
 ## LGPD
 
 | Termo | Definição |

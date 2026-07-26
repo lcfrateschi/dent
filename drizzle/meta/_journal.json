@@ -127,6 +127,20 @@
       "when": 1785110400000,
       "tag": "0017_guia_soma_no_cabecalho",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785110500000,
+      "tag": "0018_estoque",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785110600000,
+      "tag": "0019_estoque_travas",
+      "breakpoints": true
     }
   ]
 }

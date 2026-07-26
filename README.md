@@ -59,7 +59,7 @@ npm run docker:up        # sobe tudo
 npm run docker:logs      # segue o log do app
 npm run docker:down      # para
 npm run docker:reset     # apaga o volume e recria o banco do zero
-npm run db:verificar     # prova as invariantes do banco (147 casos)
+npm run db:verificar     # prova as invariantes do banco (178 casos)
 ```
 
 Variante de produção (imagem enxuta, `output: standalone`, roda sem root):
@@ -243,6 +243,57 @@ Decisões que valem saber:
 - **"Não vou poder ir" não cancela**: registra o aviso para a recepção remarcar. Um
   toque errado no celular não pode custar o horário do paciente.
 
+## Estoque (Fase 14)
+
+```bash
+# o ciclo inteiro contra o Postgres, com os números conferidos (11 passos)
+docker compose exec app npm run estoque:demo
+
+# as telas por HTTP, com sessão de verdade (14 conferências)
+docker compose exec app npm run estoque:telas
+```
+
+O seed traz **40 materiais e a ficha técnica de 17 procedimentos**, e **nenhum
+saldo**: estoque inicial é contagem física, e saldo semeado faria o primeiro
+alerta de mínimo vir de um número inventado.
+
+### As três coisas que a intuição erra
+
+**FEFO não é FIFO.** Sai primeiro o que **vence** primeiro, não o que chegou
+primeiro. Parecem a mesma coisa até a compra de reposição chegar com validade
+mais curta que a caixa da prateleira — o fornecedor escoando estoque —, e aí
+consumir por ordem de chegada deixa o lote curto vencer com saldo. Perda que
+ninguém vê acontecer.
+
+**Validade é dia civil, no fuso da clínica.** Um lote que vence 31/07 ainda serve
+às 22h de 31/07 em São Paulo, que já é 01/08 em UTC. Comparar instantes
+descartaria material bom.
+
+**Quantidade não é sempre inteira.** Hipoclorito sai em mililitros, resina em
+gramas. `0.1 + 0.2` em float dá `0.30000000000000004` — a mesma classe de bug do
+centavo. Aritmética em milésimos inteiros (`lib/domain/quantidade.ts`).
+
+### O que o banco garante, não o código
+
+`drizzle/0019_estoque_travas.sql`, provado por 31 casos do `db:verificar`:
+
+- **saldo é derivado dos movimentos** — `UPDATE lote_material SET saldo = 999` é recusado
+- **saldo nunca negativo** — não se consome o que não existe, com lock por lote
+  para duas baixas simultâneas não furarem a verificação
+- **o livro é append-only** — sem UPDATE, sem DELETE. Corrigir é lançar ajuste em
+  sentido contrário, com motivo, que é o que um inventário de verdade faz
+- **lote vencido não é consumido** — só descartado ou devolvido
+- **material controlado não sai sem responsável e motivo** (Portaria 344/98)
+- **implante e enxerto não entram sem o lote do fabricante** — sem ele, o
+  recolhimento não tem como responder em quem o material foi usado
+
+### A baixa não é automática, de propósito
+
+A ficha técnica **propõe** o consumo quando a execução é registrada, com o lote
+FEFO já escolhido, e uma pessoa confirma. Se o sistema baixasse sozinho, a
+rastreabilidade afirmaria um lote que talvez não tenha sido o usado — e
+rastreabilidade que mente é pior que nenhuma.
+
 ## Convênios e TISS (Fase 13)
 
 ```bash
@@ -409,7 +460,7 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 
 | Fase | Situação |
 |---|---|
-| 1 — Domínio e banco | pronta, verificada em Postgres real (147 invariantes) |
+| 1 — Domínio e banco | pronta, verificada em Postgres real (178 invariantes) |
 | 2 — Design system | tokens, componentes base, odontograma pronto |
 | 3 — Esqueleto, MFA, RBAC, CRUD de paciente | pronta |
 | 4 — Agenda | pronta |
@@ -422,4 +473,4 @@ dentista **não** altera cobrança. O admin **não** é superusuário clínico.
 | 11 — Painel, relatórios e auditoria | pronta |
 | 12 — Portal do paciente | pronta, com revisão de segurança (29 verificações adversariais) |
 | 13 — Convênios / TISS | controle interno pronto; TUSS oficial em 36/49; **XML não validado** (ver abaixo) |
-| 14 | ver `ROADMAP.md` |
+| 14 — Estoque | pronta (FEFO, validade, rastreabilidade de lote) |

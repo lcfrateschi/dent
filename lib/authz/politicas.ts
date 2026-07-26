@@ -34,6 +34,15 @@ export type Recurso =
   | 'pagamento'
   | 'convenio'
   | 'documento'
+  /**
+   * Estoque de materiais (Fase 14).
+   *
+   * Não é recurso clínico nem financeiro, e por isso tem entrada própria: quem
+   * repõe luva e anestésico é a recepção, quem confere nota e custo é o
+   * financeiro, e quem dá baixa no que usou é o dentista — três perfis, três
+   * ações diferentes sobre a mesma tabela.
+   */
+  | 'estoque'
   | 'relatorio_clinico'
   | 'relatorio_financeiro'
   | 'usuario'
@@ -71,6 +80,9 @@ const MATRIZ: Matriz = {
     documento: ['ler', 'criar', 'editar', 'exportar'],
     relatorio_clinico: ['ler', 'exportar'],
     convenio: ['ler'],
+    // Dá baixa do que usou no paciente. Não compra e não ajusta contagem —
+    // 'criar' é o movimento de consumo; 'editar' seria mexer no inventário.
+    estoque: ['ler', 'criar'],
   },
 
   // ── Recepção: agenda e cadastro. Nada de evolução clínica ────────────────
@@ -90,6 +102,8 @@ const MATRIZ: Matriz = {
     convenio: ['ler'],
     // Vê o plano para agendar a sessão certa, sem poder alterá-lo.
     plano_tratamento: ['ler'],
+    // Recebe o pedido do fornecedor, lança a entrada, faz a contagem mensal.
+    estoque: ['ler', 'criar', 'editar'],
   },
 
   // ── Financeiro: dinheiro. Zero dado clínico ──────────────────────────────
@@ -102,6 +116,8 @@ const MATRIZ: Matriz = {
     convenio: ['ler', 'criar', 'editar'],
     relatorio_financeiro: ['ler', 'exportar'],
     agenda: ['ler'],
+    // Confere custo e nota fiscal, e exporta o inventário para a contabilidade.
+    estoque: ['ler', 'exportar'],
   },
 
   // ── Admin: configura o sistema. NÃO é superusuário clínico ───────────────
@@ -117,6 +133,8 @@ const MATRIZ: Matriz = {
     mensageria: ['ler'],
     relatorio_clinico: ['ler'],
     relatorio_financeiro: ['ler', 'exportar'],
+    // Cadastra material e ficha técnica. Não dá baixa: quem consome é quem sabe.
+    estoque: ['ler', 'criar', 'editar', 'excluir', 'exportar'],
   },
 }
 
@@ -180,6 +198,7 @@ export const ROTULO_RECURSO: Readonly<Record<Recurso, string>> = {
   cobranca: 'Cobranças',
   pagamento: 'Pagamentos',
   convenio: 'Convênios',
+  estoque: 'Estoque',
   documento: 'Documentos',
   relatorio_clinico: 'Relatórios clínicos',
   relatorio_financeiro: 'Relatórios financeiros',

@@ -155,7 +155,7 @@ Depois de pronto, cada módulo seguinte é repetição de um padrão já provado
 | 11 | Dashboard e relatórios | 1,5 | ✅ pronta. Caixa e produção separados, ocupação em duas medidas, falta vs cancelamento, efeito da confirmação, tela de auditoria, CSV |
 | 12 | Portal do paciente | 2,5 | ✅ pronta. Realm próprio, sessão revogável, convite de uso único. **Security review feita**: 29 verificações adversariais, `npm run portal:seguranca` |
 | 13 | Convênios / TISS | 3–4 | ◐ controle interno pronto (guia, glosa, recurso, repasse conciliado item a item). Tabela 22 da ANS importada — 36/49 procedimentos com TUSS oficial, 13 dependem de decisão da clínica (`dados/README.md`). **XML TISS não validado contra o XSD da ANS** |
-| 14 | Estoque | 1 | Materiais, lote, validade, alerta de mínimo |
+| 14 | Estoque | 1 | ✅ pronta. FEFO, validade no fuso da clínica, saldo derivado por trigger, livro append-only, ficha técnica, rastreabilidade de lote → paciente. `npm run estoque:demo` e `npm run estoque:telas` |
 | | **Produto completo** | **~24** | |
 
 ### Por que convênio na Fase 13, mesmo sendo essencial

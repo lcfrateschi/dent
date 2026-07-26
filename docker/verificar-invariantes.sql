@@ -1217,6 +1217,282 @@ SELECT espera_erro('convênio: vigência com fim antes do início', ARRAY[$$
           (SELECT id FROM procedimento LIMIT 1), '100.00', '2026-06-01', '2026-01-01')
 $$]);
 
+-- ── 14. Estoque: saldo derivado, FEFO e append-only ─────────────────────────
+--
+-- Saldo de estoque é como saldo de caixa: se puder ser digitado, ele mente. As
+-- travas abaixo garantem que ele só muda por movimento, que o movimento nunca
+-- some, e que material vencido não vai para a boca de ninguém.
+-- ────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF to_regclass('material') IS NULL OR to_regclass('lote_material') IS NULL
+     OR to_regclass('movimento_estoque') IS NULL THEN
+    RAISE EXCEPTION 'tabelas do estoque não existem — rode as migrations 0018/0019';
+  END IF;
+  IF to_regprocedure('hoje_na_clinica()') IS NULL THEN
+    RAISE EXCEPTION 'função hoje_na_clinica() não existe — falta a migration 0019';
+  END IF;
+END $$;
+
+SET CONSTRAINTS ALL DEFERRED;
+
+-- Materiais de teste: um comum, um com rastreabilidade obrigatória, um controlado.
+INSERT INTO material (id, codigo, nome, categoria, unidade, quantidade_minima) VALUES
+  ('aaaa1400-0000-4000-8000-000000000001', 'TST-COMUM', 'Material comum de teste',
+   'descartavel', 'unidade', '10');
+
+INSERT INTO material (id, codigo, nome, categoria, unidade, exige_lote_do_fabricante) VALUES
+  ('aaaa1400-0000-4000-8000-000000000002', 'TST-RASTREIO', 'Implante de teste',
+   'cirurgia', 'unidade', true);
+
+INSERT INTO material (id, codigo, nome, categoria, unidade, controlado, exige_lote_do_fabricante) VALUES
+  ('aaaa1400-0000-4000-8000-000000000003', 'TST-CONTROLADO', 'Sedativo de teste',
+   'medicamento', 'unidade', true, true);
+
+-- Lote com validade LONGE e 10 unidades.
+INSERT INTO lote_material (id, material_id, codigo_fabricante, validade, custo_unitario, recebido_em)
+VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+        'L-OK', '2030-01-01', '2.50', '2026-01-10');
+
+INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, custo_unitario)
+VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+        'entrada', '10.000', '2.50');
+
+-- Lote JÁ VENCIDO, com saldo — o caso que a clínica de verdade tem na gaveta.
+INSERT INTO lote_material (id, material_id, codigo_fabricante, validade, custo_unitario, recebido_em)
+VALUES ('bbbb1400-0000-4000-8000-000000000002', 'aaaa1400-0000-4000-8000-000000000001',
+        'L-VENCIDO', '2020-01-01', '2.50', '2019-06-01');
+
+INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, custo_unitario)
+VALUES ('bbbb1400-0000-4000-8000-000000000002', 'aaaa1400-0000-4000-8000-000000000001',
+        'entrada', '5.000', '2.50');
+
+-- A entrada realmente virou saldo? Se não, os casos abaixo passariam por falta
+-- de saldo e não pela invariante que se quer provar.
+SELECT espera_ok('estoque: entrada de 10 deixou saldo 10 (saldo é derivado)', ARRAY[$$
+  DO $x$
+  BEGIN
+    IF (SELECT saldo FROM lote_material WHERE id = 'bbbb1400-0000-4000-8000-000000000001')
+       <> 10.000 THEN
+      RAISE EXCEPTION 'saldo não acompanhou a entrada';
+    END IF;
+  END $x$
+$$]);
+
+SELECT espera_erro('estoque: consumir mais do que o lote tem', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'consumo', '-11.000')
+$$]);
+
+SELECT espera_ok('estoque: consumir exatamente o saldo é permitido', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'consumo', '-10.000')
+$$, $$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'entrada', '10.000')
+$$]);
+
+SELECT espera_erro('estoque: consumir de lote VENCIDO', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000002', 'aaaa1400-0000-4000-8000-000000000001',
+          'consumo', '-1.000')
+$$]);
+
+SELECT espera_ok('estoque: DESCARTAR lote vencido é o caminho certo', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, motivo)
+  VALUES ('bbbb1400-0000-4000-8000-000000000002', 'aaaa1400-0000-4000-8000-000000000001',
+          'descarte', '-5.000', 'vencido em 2020 — descarte de inventário')
+$$]);
+
+SELECT espera_erro('estoque: entrada com quantidade negativa', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'entrada', '-1.000')
+$$]);
+
+SELECT espera_erro('estoque: consumo com quantidade positiva', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'consumo', '1.000')
+$$]);
+
+SELECT espera_erro('estoque: movimento de quantidade zero', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'ajuste', '0.000')
+$$]);
+
+SELECT espera_erro('estoque: ajuste sem motivo', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'ajuste', '1.000')
+$$]);
+
+SELECT espera_erro('estoque: descarte sem motivo', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'descarte', '-1.000')
+$$]);
+
+SELECT espera_erro('estoque: movimento apontando para lote de OUTRO material', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000002',
+          'entrada', '1.000')
+$$]);
+
+-- ── O livro é append-only ──────────────────────────────────────────────────
+SELECT espera_erro('estoque: alterar movimento já lançado', ARRAY[$$
+  UPDATE movimento_estoque SET quantidade = '-999.000'
+   WHERE lote_id = 'bbbb1400-0000-4000-8000-000000000001'
+$$]);
+
+SELECT espera_erro('estoque: excluir movimento', ARRAY[$$
+  DELETE FROM movimento_estoque
+   WHERE lote_id = 'bbbb1400-0000-4000-8000-000000000001'
+$$]);
+
+-- ── Saldo não se digita ────────────────────────────────────────────────────
+SELECT espera_erro('estoque: digitar saldo direto no lote', ARRAY[$$
+  UPDATE lote_material SET saldo = '999.000'
+   WHERE id = 'bbbb1400-0000-4000-8000-000000000001'
+$$], true);
+
+SELECT espera_erro('estoque: zerar saldo por UPDATE (some com o histórico)', ARRAY[$$
+  UPDATE lote_material SET saldo = '0.000'
+   WHERE id = 'bbbb1400-0000-4000-8000-000000000001'
+$$], true);
+
+-- ── Rastreabilidade ────────────────────────────────────────────────────────
+SELECT espera_erro('estoque: lote de implante sem número do fabricante', ARRAY[$$
+  INSERT INTO lote_material (material_id, validade, custo_unitario, recebido_em)
+  VALUES ('aaaa1400-0000-4000-8000-000000000002', '2030-01-01', '900.00', '2026-01-10')
+$$]);
+
+SELECT espera_erro('estoque: lote de implante com número em branco', ARRAY[$$
+  INSERT INTO lote_material (material_id, codigo_fabricante, validade, custo_unitario, recebido_em)
+  VALUES ('aaaa1400-0000-4000-8000-000000000002', '   ', '2030-01-01', '900.00', '2026-01-10')
+$$]);
+
+SELECT espera_ok('estoque: material comum aceita lote sem número do fabricante', ARRAY[$$
+  INSERT INTO lote_material (material_id, custo_unitario, recebido_em)
+  VALUES ('aaaa1400-0000-4000-8000-000000000001', '2.50', '2026-01-10')
+$$]);
+
+SELECT espera_erro('estoque: lote trocar de material', ARRAY[$$
+  UPDATE lote_material SET material_id = 'aaaa1400-0000-4000-8000-000000000002'
+   WHERE id = 'bbbb1400-0000-4000-8000-000000000001'
+$$]);
+
+-- ── Material controlado (Portaria 344/98) ──────────────────────────────────
+INSERT INTO lote_material (id, material_id, codigo_fabricante, validade, custo_unitario, recebido_em)
+VALUES ('bbbb1400-0000-4000-8000-000000000003', 'aaaa1400-0000-4000-8000-000000000003',
+        'L-CTRL', '2029-01-01', '15.00', '2026-01-10');
+
+INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, custo_unitario)
+VALUES ('bbbb1400-0000-4000-8000-000000000003', 'aaaa1400-0000-4000-8000-000000000003',
+        'entrada', '10.000', '15.00');
+
+SELECT espera_erro('estoque: saída de controlado sem responsável', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, motivo)
+  VALUES ('bbbb1400-0000-4000-8000-000000000003', 'aaaa1400-0000-4000-8000-000000000003',
+          'consumo', '-1.000', 'sedação consciente')
+$$]);
+
+SELECT espera_erro('estoque: saída de controlado sem motivo', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, profissional_id)
+  VALUES ('bbbb1400-0000-4000-8000-000000000003', 'aaaa1400-0000-4000-8000-000000000003',
+          'consumo', '-1.000', '22222222-2222-2222-2222-222222222221')
+$$]);
+
+SELECT espera_ok('estoque: saída de controlado COM responsável e motivo', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, profissional_id, motivo)
+  VALUES ('bbbb1400-0000-4000-8000-000000000003', 'aaaa1400-0000-4000-8000-000000000003',
+          'consumo', '-1.000', '22222222-2222-2222-2222-222222222221',
+          'sedação consciente — paciente Teste')
+$$]);
+
+SELECT espera_ok('estoque: ENTRADA de controlado não exige responsável (a nota é a prova)', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, custo_unitario)
+  VALUES ('bbbb1400-0000-4000-8000-000000000003', 'aaaa1400-0000-4000-8000-000000000003',
+          'entrada', '5.000', '15.00')
+$$]);
+
+-- ── Rastreabilidade do consumo até a execução ──────────────────────────────
+-- A execução é criada AQUI, fora de qualquer espera_erro. Um `SELECT id FROM
+-- execucao LIMIT 1` dependeria de dado pré-existente: em base limpa daria NULL,
+-- o CHECK `execucao_id is null or tipo = 'consumo'` passaria e o caso reprovaria
+-- (ou, pior, um dia passaria pelo motivo errado). Fixture explícito, sempre.
+INSERT INTO execucao (id, item_plano_id, profissional_id, executado_em) VALUES
+  ('ee141400-0000-4000-8000-000000000001',
+   'eeee0000-0000-4000-8000-000000000001',
+   '22222222-2222-2222-2222-222222222221', '2026-07-20 10:00:00-03');
+
+SELECT espera_erro('estoque: descarte apontando para execução (descarte não tem paciente)', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, motivo, execucao_id)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'descarte', '-1.000', 'caiu no chão', 'ee141400-0000-4000-8000-000000000001')
+$$]);
+
+-- Contraprova: sem ela, o caso acima poderia estar passando porque nenhum
+-- movimento aceita execucao_id — e a rastreabilidade do consumo, que é o motivo
+-- de a coluna existir, estaria quebrada sem ninguém notar.
+SELECT espera_ok('estoque: consumo APONTANDO para a execução é o caminho da rastreabilidade', ARRAY[$$
+  INSERT INTO movimento_estoque (lote_id, material_id, tipo, quantidade, execucao_id, profissional_id)
+  VALUES ('bbbb1400-0000-4000-8000-000000000001', 'aaaa1400-0000-4000-8000-000000000001',
+          'consumo', '-2.000', 'ee141400-0000-4000-8000-000000000001',
+          '22222222-2222-2222-2222-222222222221')
+$$]);
+
+-- E o elo funciona no sentido em que a clínica precisa dele: recolhimento de
+-- lote → em quem foi usado.
+SELECT espera_ok('estoque: lote recolhido responde em qual paciente foi usado', ARRAY[$$
+  DO $x$
+  DECLARE n int;
+  BEGIN
+    SELECT count(DISTINCT pt.paciente_id) INTO n
+      FROM movimento_estoque m
+      JOIN execucao e   ON e.id = m.execucao_id
+      JOIN item_plano i ON i.id = e.item_plano_id
+      JOIN plano_tratamento pt ON pt.id = i.plano_id
+     WHERE m.lote_id = 'bbbb1400-0000-4000-8000-000000000001'
+       AND m.tipo = 'consumo';
+    IF n < 1 THEN
+      RAISE EXCEPTION 'o consumo do lote não chega a nenhum paciente — rastreabilidade furada';
+    END IF;
+  END $x$
+$$]);
+
+SELECT espera_erro('estoque: ficha técnica com quantidade zero', ARRAY[$$
+  INSERT INTO insumo_procedimento (procedimento_id, material_id, quantidade)
+  VALUES ((SELECT id FROM procedimento LIMIT 1), 'aaaa1400-0000-4000-8000-000000000001', '0')
+$$]);
+
+SELECT espera_erro('estoque: mesmo material duas vezes na ficha do procedimento', ARRAY[$$
+  INSERT INTO insumo_procedimento (procedimento_id, material_id, quantidade)
+  VALUES ((SELECT id FROM procedimento LIMIT 1), 'aaaa1400-0000-4000-8000-000000000001', '1')
+$$, $$
+  INSERT INTO insumo_procedimento (procedimento_id, material_id, quantidade)
+  VALUES ((SELECT id FROM procedimento LIMIT 1), 'aaaa1400-0000-4000-8000-000000000001', '2')
+$$]);
+
+SELECT espera_erro('estoque: mínimo negativo no material', ARRAY[$$
+  INSERT INTO material (codigo, nome, categoria, unidade, quantidade_minima)
+  VALUES ('TST-NEG', 'Mínimo negativo', 'descartavel', 'unidade', '-1')
+$$]);
+
+SELECT espera_erro('estoque: embalagem com zero unidades', ARRAY[$$
+  INSERT INTO material (codigo, nome, categoria, unidade, unidades_por_embalagem)
+  VALUES ('TST-EMB', 'Embalagem zero', 'descartavel', 'unidade', 0)
+$$]);
+
+SELECT espera_erro('estoque: custo de lote negativo', ARRAY[$$
+  INSERT INTO lote_material (material_id, custo_unitario, recebido_em)
+  VALUES ('aaaa1400-0000-4000-8000-000000000001', '-1.00', '2026-01-10')
+$$]);
+
 -- ── Relatório ───────────────────────────────────────────────────────────────
 \echo ''
 \echo '════════════════════════════════════════════════════════════════════════'

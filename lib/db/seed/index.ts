@@ -2,6 +2,7 @@ import { db, pool } from '@/lib/db'
 import { cadeira, clinica } from '@/lib/db/schema'
 import { sql } from 'drizzle-orm'
 import { seedDentes } from './dentes'
+import { seedMateriais } from './materiais'
 import { seedProcedimentos } from './procedimentos'
 import { seedUsuarioInicial } from './usuarioInicial'
 
@@ -43,6 +44,17 @@ async function main(): Promise<void> {
   console.log(
     `  procedimento  → ${procedimentos} procedimentos (36 com código TUSS oficial; 13 pendentes de decisão da clínica — ver dados/README.md)`,
   )
+
+  const estoque = await seedMateriais(db)
+  console.log(
+    `  material      → ${estoque.materiais} materiais + ${estoque.vinculos} vínculos de ficha técnica (sem saldo: estoque inicial é contagem física)`,
+  )
+  if (estoque.procedimentosAusentes.length > 0) {
+    // Silêncio aqui seria baixa que nunca é proposta na tela de execução.
+    console.log(
+      `    ⚠ ficha técnica ignorada por referência inexistente: ${estoque.procedimentosAusentes.join(', ')}`,
+    )
+  }
 
   const cadeiras = await seedCadeiras()
   console.log(`  cadeira       → ${cadeiras} cadeiras`)
