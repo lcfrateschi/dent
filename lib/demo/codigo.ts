@@ -1,12 +1,14 @@
-import { gerarCodigoTotp, segundosRestantes } from '@/lib/auth/totp'
+import { gerarCodigoTotp, segundosRestantes, uriOtpauth } from '@/lib/auth/totp'
 import { db, pool } from '@/lib/db'
 import { usuario } from '@/lib/db/schema'
 import { like } from 'drizzle-orm'
+import QRCode from 'qrcode'
 
 /**
  * Imprime o código de 6 dígitos dos usuários de DEMONSTRAÇÃO.
  *
- *   npm run demo:codigo
+ *   npm run demo:codigo            # o código de 6 dígitos de cada perfil
+ *   npm run demo:codigo -- --qr    # + segredo e QR no terminal, para o celular
  *
  * Serve para testar o sistema sem um celular à mão. É um atalho legítimo num
  * ambiente de teste e seria um furo grave em produção — daí as duas travas:
@@ -34,7 +36,9 @@ async function main(): Promise<void> {
     return
   }
 
+  const comQr = process.argv.includes('--qr')
   const restam = segundosRestantes()
+
   console.log(`\nCódigos válidos por ${restam}s (a janela é de 30s):\n`)
   for (const l of linhas) {
     if (!l.segredo) {
@@ -43,7 +47,30 @@ async function main(): Promise<void> {
     }
     console.log(`  ${l.perfil.padEnd(11)} ${l.email.padEnd(26)} ${gerarCodigoTotp(l.segredo)}`)
   }
-  console.log('')
+
+  if (restam <= 5) {
+    // Digitar leva mais de 5 segundos. Avisar é melhor que a pessoa concluir que
+    // a senha está errada — o login devolve a MESMA mensagem para tudo, de
+    // propósito, e não diria que o problema foi o relógio.
+    console.log(`\n  ⚠ este código expira em ${restam}s. Rode de novo e use o próximo.`)
+  }
+
+  if (!comQr) {
+    console.log('\nPara cadastrar no celular (segredo + QR):  npm run demo:codigo -- --qr\n')
+    return
+  }
+
+  for (const l of linhas) {
+    if (!l.segredo) continue
+    const uri = uriOtpauth({ segredoBase32: l.segredo, email: l.email })
+    console.log(`\n${'─'.repeat(62)}\n  ${l.perfil.toUpperCase()} — ${l.email}`)
+    console.log(`  segredo: ${l.segredo}`)
+    console.log(await QRCode.toString(uri, { type: 'terminal', small: true }))
+  }
+  console.log(
+    'Aponte a câmera do autenticador para o QR, ou digite o segredo à mão\n' +
+      '(Google Authenticator, Authy, 1Password, Microsoft Authenticator).\n',
+  )
 }
 
 main()

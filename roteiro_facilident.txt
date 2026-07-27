@@ -1,0 +1,65 @@
+O sistema está no ar com dados realistas. Commit e6cf50f, tudo no GitHub.
+
+  Acesse
+
+  ┌────────────────────┬──────────────────────────────────────────────┐
+  │        Onde        │                   Endereço                   │
+  ├────────────────────┼──────────────────────────────────────────────┤
+  │ Sistema (equipe)   │ http://localhost:3000/entrar                 │
+  ├────────────────────┼──────────────────────────────────────────────┤
+  │ Portal do paciente │ http://localhost:3000/meu/entrar             │
+  ├────────────────────┼──────────────────────────────────────────────┤
+  │ Design system      │ http://localhost:3000/design/odontograma     │
+  ├────────────────────┼──────────────────────────────────────────────┤
+  │ Postgres           │ 127.0.0.1:5433 — facilident / facilident_dev │
+  └────────────────────┴──────────────────────────────────────────────┘
+
+  Credenciais
+
+  ┌───────────────────┬───────────────────────┬────────────────────────────┐
+  │      Perfil       │        E-mail         │           Senha            │
+  ├───────────────────┼───────────────────────┼────────────────────────────┤
+  │ Administrador     │ admin@demo.local      │ Facilident-Admin-2026      │
+  ├───────────────────┼───────────────────────┼────────────────────────────┤
+  │ Dentista          │ dentista@demo.local   │ Facilident-Dentista-2026   │
+  ├───────────────────┼───────────────────────┼────────────────────────────┤
+  │ Recepção          │ recepcao@demo.local   │ Facilident-Recepcao-2026   │
+  ├───────────────────┼───────────────────────┼────────────────────────────┤
+  │ Financeiro        │ financeiro@demo.local │ Facilident-Financeiro-2026 │
+  ├───────────────────┼───────────────────────┼────────────────────────────┤
+  │ Paciente (portal) │ ana@demo.local        │ Paciente-Portal-2026       │
+  └───────────────────┴───────────────────────┴────────────────────────────┘
+
+  O código de 6 dígitos (MFA é obrigatório para a equipe — é prontuário):
+
+  docker compose exec app npm run demo:codigo
+
+  Imprime o código atual de cada perfil. Ou adicione o segredo ao seu autenticador — o demo:preparar imprimiu o otpauth:// de cada um. Esse script só lê @demo.local e recusa rodar em
+  produção; o filtro está na consulta, não num if.
+
+  O roteiro
+
+  ROTEIRO-DE-TESTE.md — 13 seções na ordem em que a clínica usaria: recepção → dentista → orçamento e impressos → financeiro → convênios → estoque → WhatsApp → portal → painel →
+  administração.
+
+  Cada seção tem um "tente furar", porque metade do valor deste sistema está no que ele recusa: marcar dois atendimentos na mesma cadeira, editar evolução assinada, consumir lote vencido,
+  sobrepor vigência de preço, desativar o único administrador, trocar o id na URL do portal.
+
+  Os dados já plantados
+
+  Clínica configurada (CNPJ, CRO, endereço — sem isso o orçamento sai sem cabeçalho). Três pacientes: Ana (convênio + portal), Bruno (particular, parcela vencida há 5 dias) e Pedro, 8 anos,
+  com a mãe como responsável — para você ver a dentição mista no odontograma. Agenda com uma falta no passado, para as taxas aparecerem. Plano com item executado e evolução assinada.
+
+  No estoque, o caso que vale abrir primeiro: a resina A2 tem dois lotes, e o que vence em 20 dias chegou depois do de validade longa. A lista aparece na ordem em que vão sair — é o FEFO.
+  Tem também um lote já vencido e o implante abaixo do mínimo.
+
+  Um aviso e uma tabela
+
+  O roteiro termina com o que não está verificado: WhatsApp em provedor simulado, XML TISS sem validação contra o XSD da ANS, S3 nunca contra um bucket, PDF nunca aberto num visualizador,
+  mfa_secret em claro. Vale ler antes de confiar em qualquer um desses.
+
+  Ao terminar: docker compose exec app npm run demo:limpar remove as pessoas fictícias e mantém o seed de referência.
+
+  Um erro meu no caminho, pela terceira vez a mesma lição: cobrança e parcelas precisavam da mesma transação (a soma é constraint deferida). Em script, o que a aplicação faz numa transação
+  também tem de ir numa transação.
+

@@ -50,16 +50,31 @@ use o que o script imprimiu.
 
 MFA é **obrigatório** para a equipe (é prontuário). Duas formas de obter o código:
 
-1. **Com celular:** adicione o segredo impresso ao Google Authenticator, Authy,
-   1Password ou Microsoft Authenticator. O script também imprime o `otpauth://`
-   completo, que qualquer app aceita colado.
-2. **Sem celular:**
+1. **Sem celular — o mais rápido:**
    ```bash
    docker compose exec app npm run demo:codigo
    ```
-   Imprime o código atual de cada usuário de demonstração e quantos segundos ele
-   ainda vale. Só funciona para `@demo.local` e recusa rodar em produção — o
-   filtro está na consulta, não num `if`.
+   Imprime o código atual de cada perfil e quantos segundos ele ainda vale. Se
+   faltarem menos de 5 segundos, ele avisa para rodar de novo: o login devolve a
+   **mesma** mensagem para senha errada e código expirado (de propósito, para não
+   dizer a quem ataca o que existe), e sem o aviso você concluiria que a senha está
+   errada.
+
+2. **Com celular — QR no terminal:**
+   ```bash
+   docker compose exec app npm run demo:codigo -- --qr
+   ```
+   Mostra o segredo e um QR desenhado no próprio terminal, para apontar a câmera do
+   Google Authenticator, Authy, 1Password ou Microsoft Authenticator. Uma vez
+   cadastrado, o app gera os códigos sozinho.
+
+3. **O caminho real, para ver como será na clínica:** crie um usuário em
+   `/usuarios`. No primeiro login ele é levado a `/configurar-mfa`, que mostra o QR
+   **na tela** — é assim que um funcionário de verdade cadastra o autenticador, e
+   ninguém (nem o admin) vê o segredo dele.
+
+Os dois primeiros só funcionam para `@demo.local` e recusam rodar em produção — o
+filtro está na consulta, não num `if` depois.
 
 > O paciente **não** tem MFA, por decisão: exigir autenticador de quem entra três
 > vezes por ano produz abandono, não segurança. O que protege ali é bloqueio
