@@ -11,6 +11,8 @@ import {
   ticketMedio,
   tomDaVariacao,
   variacaoDeDinheiro,
+  conversaoDeOrcamento,
+  recuperacaoDaFila,
 } from './indicadores'
 
 describe('ocupação', () => {
@@ -279,5 +281,90 @@ describe('formatação', () => {
     expect(formatarMinutos(0)).toBe('0min')
     expect(formatarMinutos(-1)).toBe('—')
     expect(formatarMinutos(Number.NaN)).toBe('—')
+  })
+})
+
+describe('conversão de orçamento (Fase 18)', () => {
+  it('calcula as duas medidas', () => {
+    const c = conversaoDeOrcamento({
+      enviados: 10,
+      aprovados: 4,
+      recusados: 2,
+      expirados: 2,
+      emAberto: 2,
+    })
+    expect(c.taxa).toBe(40) // 4 de 10 enviados
+    expect(c.taxaDecidida).toBe(50) // 4 de 8 decididos
+  })
+
+  it('EXPIRADO conta como não-conversão', () => {
+    // A tentação é tirar o expirado da base ("não recusou, só não respondeu") — e
+    // é o que tornaria o indicador inútil, porque orçamento que morre de silêncio
+    // é o modo de perda mais comum e o único que a fila existe para atacar.
+    const semResposta = conversaoDeOrcamento({
+      enviados: 10,
+      aprovados: 0,
+      recusados: 0,
+      expirados: 10,
+      emAberto: 0,
+    })
+    expect(semResposta.taxa).toBe(0)
+    expect(semResposta.taxaDecidida).toBe(0)
+  })
+
+  it('sem orçamento enviado, a taxa é null e não zero', () => {
+    const vazio = conversaoDeOrcamento({
+      enviados: 0,
+      aprovados: 0,
+      recusados: 0,
+      expirados: 0,
+      emAberto: 0,
+    })
+    expect(vazio.taxa).toBeNull()
+    expect(vazio.taxaDecidida).toBeNull()
+    expect(formatarTaxa(vazio.taxa)).toBe('—')
+  })
+
+  it('tudo em aberto: taxa baixa, decidida indefinida', () => {
+    // Mês em que ninguém decidiu ainda. `taxa` = 0% é verdade e enganosa; o que a
+    // clínica precisa ler é "—" na decidida, não um julgamento.
+    const c = conversaoDeOrcamento({
+      enviados: 5,
+      aprovados: 0,
+      recusados: 0,
+      expirados: 0,
+      emAberto: 5,
+    })
+    expect(c.taxa).toBe(0)
+    expect(c.taxaDecidida).toBeNull()
+  })
+})
+
+describe('recuperação da fila (Fase 18)', () => {
+  it('separa resolvida de dispensada', () => {
+    const r = recuperacaoDaFila({ criadas: 10, resolvidas: 3, dispensadas: 2, pendentes: 5 })
+    expect(r.taxa).toBe(30)
+    expect(r.taxaTrabalhada).toBe(60) // 3 de 5 trabalhadas
+  })
+
+  it('dispensar não conta como fracasso da recepção', () => {
+    // Fila inteira dispensada não é 0% de esforço: é 0% de retorno com 100% de
+    // trabalho feito. Um indicador que pune dispensar produz clínica que insiste.
+    const r = recuperacaoDaFila({ criadas: 4, resolvidas: 0, dispensadas: 4, pendentes: 0 })
+    expect(r.taxa).toBe(0)
+    expect(r.taxaTrabalhada).toBe(0)
+    expect(r.dispensadas).toBe(4)
+  })
+
+  it('fila vazia é null, não zero', () => {
+    const r = recuperacaoDaFila({ criadas: 0, resolvidas: 0, dispensadas: 0, pendentes: 0 })
+    expect(r.taxa).toBeNull()
+    expect(r.taxaTrabalhada).toBeNull()
+  })
+
+  it('nada trabalhado ainda: taxaTrabalhada é null', () => {
+    const r = recuperacaoDaFila({ criadas: 6, resolvidas: 0, dispensadas: 0, pendentes: 6 })
+    expect(r.taxa).toBe(0)
+    expect(r.taxaTrabalhada).toBeNull()
   })
 })

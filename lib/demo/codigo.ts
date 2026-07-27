@@ -1,5 +1,8 @@
+import { decifrarSegredo } from '@/lib/auth/mfaSegredo'
 import { gerarCodigoTotp, segundosRestantes, uriOtpauth } from '@/lib/auth/totp'
 import { db, pool } from '@/lib/db'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
+import { idDaClinicaDaDemo } from './clinicaDaDemo'
 import { usuario } from '@/lib/db/schema'
 import { like } from 'drizzle-orm'
 import QRCode from 'qrcode'
@@ -26,26 +29,78 @@ async function main(): Promise<void> {
     throw new Error('demo:codigo não roda em produção: ele imprime segundo fator.')
   }
 
-  const linhas = await db
-    .select({ nome: usuario.nome, email: usuario.email, segredo: usuario.mfaSecret, perfil: usuario.perfil })
-    .from(usuario)
-    .where(like(usuario.email, '%@demo.local'))
+  /**
+   * O contexto vem da clínica da demonstração, resolvida sem tenant (ver
+   * `clinicaDaDemo.ts`). Duas consequências, ambas boas:
+   *
+   *   • funciona em banco com mais de uma clínica, onde antes a conexão nem era
+   *     entregue;
+   *   • o filtro `@demo.local` deixa de ser a ÚNICA barreira. Agora, além do
+   *     domínio, a consulta só alcança a clínica da demonstração — e no dia em que
+   *     a RLS estiver de pé isso passa a ser garantia do banco, não da cláusula
+   *     `where`. Para um script que imprime segundo fator, cinto e suspensório é o
+   *     mínimo.
+   */
+  const clinicaDemo = await idDaClinicaDaDemo()
+  if (!clinicaDemo) {
+    console.log('\nNenhum usuário de demonstração. Rode: npm run demo:preparar\n')
+    return
+  }
+
+  const linhas = await comContextoDeClinica(clinicaDemo, () =>
+    db
+      .select({
+        // O `id` entra porque ele é o dado associado autenticado da cifra: o segredo
+        // de um usuário não decifra com o id de outro (ver `lib/auth/mfaSegredo.ts`).
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        segredo: usuario.mfaSecret,
+        perfil: usuario.perfil,
+      })
+      .from(usuario)
+      .where(like(usuario.email, '%@demo.local')),
+  )
 
   if (linhas.length === 0) {
     console.log('\nNenhum usuário de demonstração. Rode: npm run demo:preparar\n')
     return
   }
 
+  /**
+   * Decifra antes de gerar. O segredo está cifrado em repouso desde que
+   * `lib/auth/mfaSegredo.ts` existe, e texto claro legado continua aceito — é a
+   * migração preguiçosa. Este script **não** recifra: ele é ferramenta de leitura, e
+   * quem recifra é o login (`lib/auth/config.ts`), que já grava naquela linha.
+   *
+   * Um segredo que não decifra aqui vira aviso na linha do usuário, não exceção que
+   * derruba o script: com quatro perfis, um segredo ilegível não deve esconder os
+   * códigos dos outros três.
+   */
+  const comSegredo = linhas.map((l) => {
+    if (!l.segredo) return { ...l, claro: null, erro: null }
+    try {
+      return { ...l, claro: decifrarSegredo(l.segredo, l.id).segredo, erro: null }
+    } catch (e) {
+      return { ...l, claro: null, erro: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
   const comQr = process.argv.includes('--qr')
   const restam = segundosRestantes()
 
   console.log(`\nCódigos válidos por ${restam}s (a janela é de 30s):\n`)
-  for (const l of linhas) {
+  for (const l of comSegredo) {
+    const rotulo = `  ${l.perfil.padEnd(11)} ${l.email.padEnd(26)}`
     if (!l.segredo) {
-      console.log(`  ${l.perfil.padEnd(11)} ${l.email.padEnd(26)} MFA não configurado`)
+      console.log(`${rotulo} MFA não configurado`)
       continue
     }
-    console.log(`  ${l.perfil.padEnd(11)} ${l.email.padEnd(26)} ${gerarCodigoTotp(l.segredo)}`)
+    if (!l.claro) {
+      console.log(`${rotulo} \x1b[31mSEGREDO ILEGÍVEL\x1b[0m — ${l.erro}`)
+      continue
+    }
+    console.log(`${rotulo} ${gerarCodigoTotp(l.claro)}`)
   }
 
   if (restam <= 5) {
@@ -60,11 +115,15 @@ async function main(): Promise<void> {
     return
   }
 
-  for (const l of linhas) {
-    if (!l.segredo) continue
-    const uri = uriOtpauth({ segredoBase32: l.segredo, email: l.email })
+  for (const l of comSegredo) {
+    if (!l.claro) continue
+    // O QR e o segredo impressos são o valor EM CLARO — é o que o autenticador do
+    // celular precisa. Por isso as duas travas do topo (recusa produção, só
+    // `@demo.local`) continuam sendo o que protege este script; cifrar em repouso não
+    // muda nada aqui.
+    const uri = uriOtpauth({ segredoBase32: l.claro, email: l.email })
     console.log(`\n${'─'.repeat(62)}\n  ${l.perfil.toUpperCase()} — ${l.email}`)
-    console.log(`  segredo: ${l.segredo}`)
+    console.log(`  segredo: ${l.claro}`)
     console.log(await QRCode.toString(uri, { type: 'terminal', small: true }))
   }
   console.log(

@@ -15,6 +15,12 @@ dist/
 *.sql.gz
 /backups/
 /uploads/
+# `docker/exportar-clinica.sh` grava aqui por padrão, e o conteúdo é prontuário de uma
+# clínica inteira — CSV de paciente, evolução e anexos. O arquivo existe para SAIR da
+# máquina (portabilidade LGPD), então é o último que pode entrar num repositório: uma
+# vez comitado, fica no histórico de todo clone e de todo backup do Git, e apagá-lo
+# depois não o remove de lá.
+/exportacoes/
 
 .DS_Store
 *.log

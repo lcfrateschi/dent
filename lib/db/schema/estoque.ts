@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  foreignKey,
   boolean,
   check,
   date,
@@ -10,6 +11,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
@@ -17,6 +19,7 @@ import { profissional, usuario } from './acesso'
 import { categoriaMaterialEnum, tipoMovimentoEstoqueEnum, unidadeMaterialEnum } from './enums'
 import { procedimento } from './referencia'
 import { execucao } from './tratamento'
+import { clinicaId } from './tenant'
 
 /**
  * Insumo do consultório: anestésico, resina, luva, agulha, broca, implante.
@@ -30,9 +33,10 @@ import { execucao } from './tratamento'
 export const material = pgTable(
   'material',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
     /** Código interno da clínica. É o que está etiquetado na prateleira. */
-    codigo: varchar('codigo', { length: 30 }).notNull().unique(),
+    codigo: varchar('codigo', { length: 30 }).notNull(),
     nome: text('nome').notNull(),
     descricao: text('descricao'),
     categoria: categoriaMaterialEnum('categoria').notNull(),
@@ -62,6 +66,7 @@ export const material = pgTable(
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    uniqueIndex('material_codigo_por_clinica_uk').on(t.clinicaId, t.codigo),
     index('material_categoria_idx').on(t.categoria, t.nome),
     check('material_embalagem_positiva', sql`${t.unidadesPorEmbalagem} >= 1`),
     check('material_minimo_nao_negativo', sql`${t.quantidadeMinima} >= 0`),
@@ -90,10 +95,9 @@ export const material = pgTable(
 export const loteMaterial = pgTable(
   'lote_material',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    materialId: uuid('material_id')
-      .notNull()
-      .references(() => material.id, { onDelete: 'restrict' }),
+    materialId: uuid('material_id').notNull(),
     /** Número do lote impresso pelo fabricante. Nulo só se o material não exige. */
     codigoFabricante: varchar('codigo_fabricante', { length: 60 }),
     /** Dia civil — validade não tem hora. Nulo = material sem validade (instrumental). */
@@ -110,6 +114,11 @@ export const loteMaterial = pgTable(
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'lote_material_material_id_material_id_fk',
+      columns: [t.materialId, t.clinicaId],
+      foreignColumns: [material.id, material.clinicaId],
+    }).onDelete('restrict'),
     /**
      * O índice do FEFO. `nulls last` casa com `ordenarFefo`: material perene sai
      * depois do que pode vencer.
@@ -142,14 +151,11 @@ export const loteMaterial = pgTable(
 export const movimentoEstoque = pgTable(
   'movimento_estoque',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    loteId: uuid('lote_id')
-      .notNull()
-      .references(() => loteMaterial.id, { onDelete: 'restrict' }),
+    loteId: uuid('lote_id').notNull(),
     /** Redundante com o lote, e é o que permite o FK composto abaixo. */
-    materialId: uuid('material_id')
-      .notNull()
-      .references(() => material.id, { onDelete: 'restrict' }),
+    materialId: uuid('material_id').notNull(),
     tipo: tipoMovimentoEstoqueEnum('tipo').notNull(),
     quantidade: numeric('quantidade', { precision: 12, scale: 3 }).notNull(),
     /** Custo unitário praticado neste movimento — cópia do lote na hora da baixa. */
@@ -160,11 +166,9 @@ export const movimentoEstoque = pgTable(
      * recolhimento de um lote de implante responde "em quais pacientes foi
      * usado" com uma consulta, não com uma busca em papel.
      */
-    execucaoId: uuid('execucao_id').references(() => execucao.id, { onDelete: 'restrict' }),
+    execucaoId: uuid('execucao_id'),
     /** Quem retirou. Obrigatório em material controlado. */
-    profissionalId: uuid('profissional_id').references(() => profissional.id, {
-      onDelete: 'restrict',
-    }),
+    profissionalId: uuid('profissional_id'),
     registradoPorId: uuid('registrado_por_id').references(() => usuario.id, {
       onDelete: 'set null',
     }),
@@ -173,6 +177,26 @@ export const movimentoEstoque = pgTable(
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'movimento_estoque_execucao_id_execucao_id_fk',
+      columns: [t.execucaoId, t.clinicaId],
+      foreignColumns: [execucao.id, execucao.clinicaId],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'movimento_estoque_lote_id_lote_material_id_fk',
+      columns: [t.loteId, t.clinicaId],
+      foreignColumns: [loteMaterial.id, loteMaterial.clinicaId],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'movimento_estoque_material_id_material_id_fk',
+      columns: [t.materialId, t.clinicaId],
+      foreignColumns: [material.id, material.clinicaId],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'movimento_estoque_profissional_id_profissional_id_fk',
+      columns: [t.profissionalId, t.clinicaId],
+      foreignColumns: [profissional.id, profissional.clinicaId],
+    }).onDelete('restrict'),
     index('movimento_lote_idx').on(t.loteId, t.ocorridoEm),
     index('movimento_material_idx').on(t.materialId, t.ocorridoEm),
     index('movimento_execucao_idx').on(t.execucaoId).where(sql`${t.execucaoId} is not null`),
@@ -216,17 +240,24 @@ export const movimentoEstoque = pgTable(
 export const insumoProcedimento = pgTable(
   'insumo_procedimento',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    procedimentoId: uuid('procedimento_id')
-      .notNull()
-      .references(() => procedimento.id, { onDelete: 'cascade' }),
-    materialId: uuid('material_id')
-      .notNull()
-      .references(() => material.id, { onDelete: 'restrict' }),
+    procedimentoId: uuid('procedimento_id').notNull(),
+    materialId: uuid('material_id').notNull(),
     quantidade: numeric('quantidade', { precision: 12, scale: 3 }).notNull(),
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'insumo_procedimento_material_id_material_id_fk',
+      columns: [t.materialId, t.clinicaId],
+      foreignColumns: [material.id, material.clinicaId],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'insumo_procedimento_procedimento_id_procedimento_id_fk',
+      columns: [t.procedimentoId, t.clinicaId],
+      foreignColumns: [procedimento.id, procedimento.clinicaId],
+    }).onDelete('cascade'),
     unique('insumo_procedimento_material_uk').on(t.procedimentoId, t.materialId),
     index('insumo_material_idx').on(t.materialId),
     check('insumo_quantidade_positiva', sql`${t.quantidade} > 0`),

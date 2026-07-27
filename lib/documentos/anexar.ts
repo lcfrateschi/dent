@@ -103,6 +103,10 @@ export async function anexarComAtor(
     }
 
     chave = chaveArmazenamento({
+      // Do ATOR, não da entrada: se viesse do formulário, um POST forjado
+      // gravaria o arquivo dentro do prefixo de outra clínica — e o dia em que
+      // alguém exportasse aquela clínica, levaria embora um exame que não é dela.
+      clinicaId: ator.clinicaId,
       pacienteId: entrada.pacienteId,
       documentoId,
       extensao: validado.formato.extensao,

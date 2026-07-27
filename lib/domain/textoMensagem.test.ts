@@ -11,6 +11,8 @@ import {
   textoConfirmado,
   textoLembrete,
   textoNaoEntendido,
+  textoRecall,
+  parametrosRecall,
 } from './textoMensagem'
 
 const INICIO = instanteDe('2026-08-13', '14:00') // quinta-feira
@@ -160,5 +162,52 @@ describe('respostas automáticas', () => {
     expect(t).toContain('não consegui entender')
     expect(t).toContain('recepção')
     expect(t).toContain('SIM')
+  })
+})
+
+describe('convite de retorno (Fase 18)', () => {
+  const base = { pacienteNome: 'Ana Paula Ribeiro', clinicaNome: 'Sorriso Vivo', meses: 6 }
+
+  it('trata pelo primeiro nome e fala em meses', () => {
+    const t = textoRecall(base)
+    expect(t).toContain('Olá, Ana!')
+    expect(t).toContain('6 meses')
+    expect(t).toContain('Sorriso Vivo')
+  })
+
+  it('singular no mês único', () => {
+    expect(textoRecall({ ...base, meses: 1 })).toContain('1 mês')
+  })
+
+  it('NÃO carrega dado clínico — nem procedimento, nem dente, nem diagnóstico', () => {
+    // Esta é a asserção que importa: a tela do celular do paciente é lida por
+    // outras pessoas. O tipo do retorno existe na tabela para a clínica organizar
+    // a fila; ele não entra na mensagem.
+    const t = textoRecall(base).toLowerCase()
+    for (const proibido of [
+      'periodontal',
+      'profilaxia',
+      'raspagem',
+      'cárie',
+      'carie',
+      'canal',
+      'extração',
+      'extracao',
+      'dente',
+      'ortodont',
+      'diagnóstico',
+      'diagnostico',
+    ]) {
+      expect(t, proibido).not.toContain(proibido)
+    }
+  })
+
+  it('recusa intervalo inválido', () => {
+    expect(() => textoRecall({ ...base, meses: 0 })).toThrowError(ErroDominio)
+  })
+
+  it('os parâmetros do template seguem a ordem do texto', () => {
+    // Trocar duas posições manda o número de meses onde vai o nome da clínica.
+    expect(parametrosRecall(base)).toEqual(['Ana', '6', 'Sorriso Vivo'])
   })
 })

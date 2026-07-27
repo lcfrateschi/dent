@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  foreignKey,
   bigint,
   check,
   index,
@@ -15,6 +16,7 @@ import { evolucao } from './clinico'
 import { etapaDocumentoEnum, tipoDocumentoEnum } from './enums'
 import { paciente } from './pacientes'
 import { dente } from './referencia'
+import { clinicaId } from './tenant'
 
 /**
  * Anexo do prontuário: radiografia, foto clínica, atestado, receita, PDF de orçamento.
@@ -25,10 +27,9 @@ import { dente } from './referencia'
 export const documento = pgTable(
   'documento',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    pacienteId: uuid('paciente_id')
-      .notNull()
-      .references(() => paciente.id, { onDelete: 'restrict' }),
+    pacienteId: uuid('paciente_id').notNull(),
     tipo: tipoDocumentoEnum('tipo').notNull(),
     nome: text('nome').notNull(),
     descricao: text('descricao'),
@@ -66,6 +67,11 @@ export const documento = pgTable(
     removidoPorId: uuid('removido_por_id').references(() => usuario.id, { onDelete: 'set null' }),
   },
   (t) => [
+    foreignKey({
+      name: 'documento_paciente_id_paciente_id_fk',
+      columns: [t.pacienteId, t.clinicaId],
+      foreignColumns: [paciente.id, paciente.clinicaId],
+    }).onDelete('restrict'),
     index('documento_paciente_idx').on(t.pacienteId, t.criadoEm),
     index('documento_tipo_idx').on(t.pacienteId, t.tipo),
     // A galeria do dente: radiografias daquele dente em ordem de exame.

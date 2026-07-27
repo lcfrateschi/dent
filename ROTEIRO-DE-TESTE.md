@@ -13,18 +13,20 @@ Tempo total: cerca de 90 minutos para passar por tudo com calma.
 
 ```bash
 docker compose up -d                          # Postgres + migrations + seed + app
-docker compose exec app npm run demo:preparar # clínica, equipe, pacientes, dados
+./docker/credencial-app.sh                    # dá senha à role de aplicação (uma vez)
+DONO="postgres://facilident:facilident_dev@db:5432/facilident"
+docker compose exec -T -e DATABASE_URL=$DONO app npm run demo:preparar
 ```
 
 O `demo:preparar` imprime **as credenciais** no fim. Ele cria pessoas fictícias
 (marcadas com `[DEMO]` e e-mail `@demo.local`) e recusa rodar em produção.
 
-Para voltar ao estado limpo em qualquer momento:
-
-```bash
-docker compose exec app npm run demo:limpar   # remove só os dados de demonstração
-docker compose down -v && docker compose up -d # zera o banco inteiro
-```
+O `credencial-app.sh` roda **uma vez por banco** e é idempotente. Ele dá `LOGIN` e
+senha à role `facilident_app`, que a `drizzle/0023` cria **sem** as duas — senha
+escrita num SQL versionado é senha pública, e continua no histórico do Git depois de
+qualquer troca. Em desenvolvimento a senha vem do padrão `APP_DB_PASSWORD`
+(`facilident_app_dev`, no `docker-compose.yml`); **em produção o script se recusa a
+rodar com ela**. Sem esse passo, o app sobe e não conecta.
 
 | Onde | Endereço |
 |---|---|
@@ -32,6 +34,56 @@ docker compose down -v && docker compose up -d # zera o banco inteiro
 | Portal do paciente | http://localhost:3000/meu/entrar |
 | Design system | http://localhost:3000/design/odontograma |
 | Postgres | `127.0.0.1:5433` — usuário `facilident`, senha `facilident_dev` |
+
+### Por que os scripts levam `-e DATABASE_URL=$DONO`
+
+Desde a Fase 17 o sistema é **multi-tenant com Row Level Security**, e o app conecta
+como `facilident_app` — uma role **sem** `BYPASSRLS` e que **não é dona das
+tabelas**. Isso não é zelo decorativo: **dono de tabela ignora política de RLS**, e
+enquanto o app conectava como dono toda política era enfeite, com o teste
+adversarial passando de olhos fechados.
+
+O efeito no dia a dia: **script de operação precisa da credencial do dono**, porque
+ele faz coisas que a aplicação não faz — `DISABLE TRIGGER` para limpar dados de
+demonstração, `COPY` para exportar, criar clínica. E essa credencial **não está no
+container do `app`**, de propósito: se estivesse, um processo web comprometido a
+leria e a separação de roles não valeria nada. Você a fornece no momento do uso.
+
+Vale para: `demo:preparar`, `demo:limpar`, `demo:codigo`, `admin:verificar`,
+`estoque:telas`, `portal:seguranca`, `tenant:seguranca` e os `*:demo`.
+**Não** vale para navegar no sistema — ali é o `facilident_app` que atende.
+
+Se você esquecer, a mensagem é clara e diz o que fazer:
+
+```
+Sem contexto de clínica: app.clinica_id não está definido nesta transação.
+```
+
+### Voltar ao estado limpo
+
+```bash
+docker compose exec -T -e DATABASE_URL=$DONO app npm run demo:limpar
+docker compose down -v && docker compose up -d   # zera o banco inteiro
+```
+
+⚠️ **`demo:limpar` remove os dados de demonstração, não a clínica.** Apagar clínica
+é `ON DELETE RESTRICT` de propósito — prontuário tem guarda de 20 anos (CFO), e
+apagar tenant não é operação de sistema. Se o banco acumular clínicas de teste
+(acontece ao rodar `tenant:seguranca` com interrupção no meio), o caminho é
+`down -v`, não um `DELETE`.
+
+### Se um script disser que há várias clínicas
+
+Ele para e lista as candidatas, em vez de escolher sozinho:
+
+```
+Este banco tem 7 clínicas e nenhuma é a de demonstração. Escolha uma explicitamente:
+  --clinica=<uuid>   Clínica Odontológica Sorriso Vivo Ltda
+```
+
+É deliberado. "A primeira clínica" não é critério — foi exatamente esse `limit 1`
+sem critério, espalhado por dez consultas, que a Fase 17 existiu para eliminar; um
+script que escolhe sozinho grava dado de teste dentro do tenant errado.
 
 ### Credenciais
 
@@ -73,7 +125,7 @@ Aí valem os três caminhos abaixo.
 
 1. **Sem celular — o mais rápido:**
    ```bash
-   docker compose exec app npm run demo:codigo
+   docker compose exec -T -e DATABASE_URL=$DONO app npm run demo:codigo
    ```
    Imprime o código atual de cada perfil e quantos segundos ele ainda vale. Se
    faltarem menos de 5 segundos, ele avisa para rodar de novo: o login devolve a
@@ -83,7 +135,7 @@ Aí valem os três caminhos abaixo.
 
 2. **Com celular — QR no terminal:**
    ```bash
-   docker compose exec app npm run demo:codigo -- --qr
+   docker compose exec -T -e DATABASE_URL=$DONO app npm run demo:codigo -- --qr
    ```
    Mostra o segredo e um QR desenhado no próprio terminal, para apontar a câmera do
    Google Authenticator, Authy, 1Password ou Microsoft Authenticator. Uma vez
@@ -98,7 +150,7 @@ Os dois primeiros só funcionam para `@demo.local` e recusam rodar em produção
 filtro está na consulta, não num `if` depois.
 
 E a trava do MFA continua **provável** a qualquer momento: com
-`MFA_DESABILITADO=false`, o `npm run admin:verificar` confirma que o usuário novo
+`MFA_DESABILITADO=false`, o `admin:verificar` confirma que o usuário novo
 fica preso em `/configurar-mfa`. Com o MFA desligado, esse caso aparece como
 `⊘ pulado`, com o motivo — um verde silencioso ali afirmaria que a trava existe
 num ambiente onde ela está desligada.
@@ -113,6 +165,12 @@ num ambiente onde ela está desligada.
 
 **Entre como `admin@demo.local`.** Vai direto ao sistema — os usuários de
 demonstração nascem com MFA configurado e senha definitiva.
+
+> **Se você já estava logado antes da Fase 17, vai ter de entrar de novo.** A sessão
+> passou a carregar a clínica, e um token emitido antes disso não a tem. O sistema
+> trata sessão sem clínica como **sem sessão** — completá-la com "a" clínica
+> transformaria uma credencial antiga em passe para um tenant que ela nunca nomeou.
+> Custo: um login. É a única incompatibilidade que a fase deixou para quem usa.
 
 Para ver o fluxo real de um funcionário novo, faça em `/usuarios` → **Novo
 usuário** (nome, e-mail, perfil Recepção) e guarde a senha que aparece.
@@ -333,14 +391,14 @@ Entre como **recepção** → `/whatsapp`.
 - **Despachar agora** manda a fila para o provedor sem esperar o ciclo. O mesmo
   pela linha de comando:
   ```bash
-  docker compose exec app npm run whatsapp:despachar
+  docker compose exec -T -e DATABASE_URL=$DONO app npm run whatsapp:despachar
   ```
   Em produção, o serviço `despachante` faz isso a cada 10 minutos
   (`docker compose --profile prod up despachante`).
 - Simule a resposta do paciente pelo webhook — o script de demonstração faz o
   ciclo completo, incluindo "confirmo", "não vou poder" e as respostas ambíguas:
   ```bash
-  docker compose exec app npm run whatsapp:demo
+  docker compose exec -T -e DATABASE_URL=$DONO app npm run whatsapp:demo
   ```
 
 > **O provedor é SIMULADO.** Nenhuma mensagem sai até a clínica ter conta WhatsApp
@@ -416,32 +474,96 @@ Como **admin**:
 
 ## 12. As travas, num só lugar
 
-Se quiser ver todas de uma vez, sem clicar:
+**Um comando roda a bateria inteira:**
+
+```bash
+./docker/verificar-tudo.sh            # tudo (uns 10 min)
+./docker/verificar-tudo.sh --rapido    # só o que não toca banco nem servidor
+./docker/verificar-tudo.sh --listar    # mostra o que rodaria, sem rodar
+```
+
+**Estado hoje: 27 de 28 verdes** (a pulada é a cifra do MFA)
+
+⚠️ **Uma etapa de tela pode falhar na primeira rodada depois de mudar código** — o
+`next dev` compila a rota na primeira requisição e um `fetch` com timeout curto perde a
+corrida. O sintoma é erro de **rede** (`syscall: 'read'`), não status HTTP. Rode a etapa
+sozinha antes de investigar; se passar, era isso. Aconteceu uma vez e não reproduziu.
+
+**Estado anterior desta seção: 21 de 21 verdes** — mas só com o segundo fator LIGADO. No padrão de
+desenvolvimento (`MFA_DESABILITADO=true`) a etapa da cifra do MFA aparece como `⊘`, com
+o comando para rodá-la, porque com o campo do código ignorado o login passaria com
+qualquer coisa e a verificação não mediria nada:
+
+```bash
+MFA_DESABILITADO=false docker compose up -d --no-deps app
+./docker/verificar-tudo.sh
+docker compose up -d --no-deps app     # volta ao padrão
+```
+
+Ele já sabe passar a credencial do dono onde é preciso, **não para no primeiro erro**
+(saber que 3 de 17 quebraram é diferente de saber que 1 quebrou) e **distingue pulado
+de passou** — se você usar `--rapido`, o veredito diz "nada falhou, mas 3 de 17
+rodaram", não "tudo verde". Etapa pulada contada como sucesso é a forma mais fácil de
+um relatório não provar nada, e a primeira versão deste script fazia exatamente isso.
+
+Quando algo falha, ele lembra as três causas que **não são bug**: banco sem dado de
+demonstração, script rodado sem a credencial do dono, e várias clínicas no banco (aí o
+script pede `--clinica=<uuid>`, de propósito).
+
+Se preferir uma por vez:
 
 ```bash
 npm run db:verificar
 ```
 
-200 casos contra o Postgres real, cada um com o nome do que está sendo provado —
-prontuário append-only, soma das parcelas, agenda sem sobreposição, saldo de
-estoque nunca negativo, preço de convênio imutável, e por aí.
+**222 casos** contra o Postgres real, cada um com o nome do que está sendo provado —
+prontuário append-only, soma das parcelas, agenda sem sobreposição, saldo de estoque
+nunca negativo, preço de convênio imutável, e desde a Fase 17 também: `clinica_id`
+obrigatório, referência que cruza clínica recusada, numeração por clínica sem
+buraco, e nenhuma tabela de dados sem tenant.
 
-E as verificações de ponta a ponta, com sessão de verdade:
+E as verificações de ponta a ponta, com sessão de verdade. Note o `-e DATABASE_URL`
+— é a credencial do dono, explicada na seção 0:
 
 ```bash
-docker compose exec app npm run estoque:demo        # FEFO, validade, rastreabilidade
-docker compose exec app npm run estoque:telas       # as telas de estoque por HTTP
-docker compose exec app npm run admin:verificar     # cadastros e segurança do MFA
-docker compose exec app npm run portal:seguranca    # 29 verificações adversariais
-docker compose exec app npm run convenio:demo       # ciclo do convênio com os números
-docker compose exec app npm run documentos:demo     # anexos, atestado, receita
-docker compose exec app npm run relatorios:demo     # indicadores conferidos
-docker compose exec app npm run whatsapp:demo       # fila, webhook, efeito na agenda
-npm test                                            # 954 testes de domínio
+DONO="postgres://facilident:facilident_dev@db:5432/facilident"
+E="docker compose exec -T -e DATABASE_URL=$DONO app"
+
+$E npm run tenant:seguranca     # ISOLAMENTO ENTRE CLÍNICAS, por HTTP
+$E npm run portal:seguranca     # 29 verificações adversariais do portal
+$E npm run admin:verificar      # cadastros e segurança do MFA
+$E npm run estoque:telas        # as telas de estoque por HTTP
+$E npm run estoque:demo         # FEFO, validade, rastreabilidade
+$E npm run convenio:demo        # ciclo do convênio com os números
+$E npm run documentos:demo      # anexos, atestado, receita
+$E npm run relatorios:demo      # indicadores conferidos
+$E npm run whatsapp:demo        # fila, webhook, efeito na agenda
+
+npm run db:verificar            # 222 invariantes do banco
+npm test                        # 959 testes de domínio
+
+# Row Level Security, políticas e FK composto:
+docker compose exec -T db psql -U facilident -d facilident -q -f - < docker/verificar-rls.sql
 
 # Conferir o build sem derrubar o servidor de desenvolvimento:
 docker compose run --rm --no-deps app npm run build
 ```
+
+### O `tenant:seguranca` é o que vale a pena ler
+
+Ele cria **duas clínicas de verdade**, faz login em cada uma e tenta alcançar, por
+id na URL, o paciente / documento / orçamento / guia da outra. Cada rota tem de
+responder 404 — **nunca 200, e nunca 500**. Um 500 não é isolamento, é erro, e num
+teste adversarial ele se confunde com sucesso: já aconteceu neste projeto um
+relatório acusar "VAZOU" em dois casos porque tudo respondia 500.
+
+O passo que dá valor ao resto é o último: ele **desliga a política de RLS**, repete
+o mesmo pedido e **exige que o prontuário da outra clínica abra (200)**; depois
+religa e confere que religou. Sem essa contraprova, os seis 404 poderiam vir de
+autorização de perfil, de um `where` esquecido ou de rota quebrada — e "isolado"
+teria sido assinado sem que ninguém tivesse medido a RLS.
+
+Política ligada → 404. Desligada → 200. É a RLS.
 
 ---
 
@@ -459,13 +581,34 @@ Vale saber antes de confiar:
 | **`mfa_secret`** | Em texto claro no banco. Não é bypass (ainda exige senha), mas agrava um vazamento. É a próxima dívida a pagar. |
 | **MFA desligado** | `MFA_DESABILITADO=true` no compose de desenvolvimento. Produção se recusa a subir assim, e o teste `lib/auth/segredo.test.ts` prova as duas pontas. |
 | **Backup** | `docker/backup.sh` funciona e a restauração é testada, mas o arquivo **não sai cifrado da máquina** — isso é decisão de infraestrutura da clínica. |
+| **Token do WhatsApp por clínica** | A ENTRADA é multi-clínica (o webhook resolve o tenant pelo `phone_number_id`). A **saída** ainda lê `WHATSAPP_TOKEN` do ambiente: uma conta da Meta para todas. Token por clínica é segredo no banco e puxa cifragem, como `mfa_secret`. |
+| **Onboarding** | Não existe tela. `facilident_app` não cria clínica **por desenho** — quem atende requisição não cria tenant — então clínica nova nasce de script com a credencial do dono. |
+| **Restauração de backup sob RLS** | O `restaurar.sh --testar` confere que `clinica_id` e as 41 políticas com `FORCE` sobreviveram ao dump, mas restaurar **pela role de aplicação** não foi exercitado. |
+
+### Sobre o isolamento entre clínicas, com precisão
+
+Vale distinguir o que está provado do que está declarado, porque a diferença é
+grande e é fácil de arredondar:
+
+- **Provado:** 41 tabelas com política `USING` + `WITH CHECK` e `FORCE ROW LEVEL
+  SECURITY`; 81 FKs compostos `(pai_id, clinica_id)`, que tornam impossível uma
+  filha apontar para pai de outra clínica; o app conectando como role sem
+  `BYPASSRLS` e sem posse; e `tenant:seguranca` negando 6/6 atravessamentos por
+  HTTP **com a contraprova** que desliga a política e exige 200.
+- **Declarado, não exercitado:** o comportamento com dezenas de clínicas e carga
+  real. Tudo foi medido com duas ou três.
+- **Consequência assumida:** os scripts de operação rodam como **dono**, onde
+  política de RLS não se aplica. Isso é necessário (a limpeza usa `DISABLE
+  TRIGGER`), e o preço é que consulta escrita para rodar como dono precisa filtrar
+  `clinica_id` explicitamente. Duas vezes isso foi esquecido e o **FK composto** foi
+  quem avisou.
 
 ---
 
 ## Depois do teste
 
 ```bash
-docker compose exec app npm run demo:limpar   # remove pessoas e dados fictícios
+docker compose exec -T -e DATABASE_URL=$DONO app npm run demo:limpar   # remove pessoas e dados fictícios
 ```
 
 O seed de referência (52 dentes, 49 procedimentos, 40 materiais, cadeiras)

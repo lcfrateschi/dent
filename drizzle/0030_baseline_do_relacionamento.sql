@@ -1,0 +1,18 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║ Alinhamento de baseline: as tabelas da Fase 18 no snapshot do drizzle     ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- **Não faz nada no banco.** `regra_retorno`, `tarefa_relacionamento`,
+-- `contato_relacionamento`, os cinco enums e as duas colunas de opt-out em
+-- `paciente` foram criados à mão na `drizzle/0029_relacionamento.sql`, junto com as
+-- políticas de RLS, a trava de assinatura e as asserções — coisas que o
+-- `drizzle-kit` não sabe gerar.
+--
+-- O gerador compara o schema TS com o **snapshot**, nunca com o banco. Enquanto o
+-- snapshot não souber dessas tabelas, todo `db:generate` produz `CREATE TABLE` do
+-- que já existe, e a próxima mexida em qualquer tabela vizinha vem com esse CREATE
+-- de carona. Então o SQL gerado foi descartado e o snapshot ficou.
+--
+-- Terceira vez que este procedimento aparece (`0025`, `0028`, esta). Está no
+-- `CLAUDE.md`, na seção sobre `drizzle-kit`.
+SELECT 1 WHERE false;

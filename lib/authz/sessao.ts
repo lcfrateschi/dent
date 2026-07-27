@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth/config'
+import { definirClinicaDoContexto } from '@/lib/tenant/contexto'
 import { redirect } from 'next/navigation'
 import { type Acao, type Perfil, type Recurso, pode } from './politicas'
 
@@ -27,6 +28,19 @@ export interface Ator {
   readonly email: string
   readonly perfil: Perfil
   readonly profissionalId: string | null
+  /**
+   * A clínica deste usuário — o tenant da requisição.
+   *
+   * Vem do token, que a recebeu no login a partir da linha do `usuario`. **Nunca
+   * de parâmetro, nunca da URL.** É a mesma regra que `lib/portal/consultas.ts`
+   * aplica a `pacienteId`: id que vem de fora é id que quem ataca escolhe.
+   *
+   * Quase nenhuma consulta precisa lê-lo explicitamente — `atorAtual()` o põe no
+   * contexto assíncrono e `lib/db/index.ts` o aplica em toda conexão. Ele está
+   * aqui para os casos em que o tenant precisa ser dito em voz alta (auditoria,
+   * exportação) e para o `comClinica()` de quem sai do fluxo da requisição.
+   */
+  readonly clinicaId: string
 }
 
 /**
@@ -38,15 +52,38 @@ export interface Ator {
 export async function atorAtual(): Promise<Ator | null> {
   const sessao = await auth()
   const u = sessao?.user
-  if (!u?.id || !u.perfil) return null
+  /**
+   * Sem `clinicaId`, **não há sessão**.
+   *
+   * O caso concreto é o token emitido antes da Fase 17: ele tem id, perfil e MFA,
+   * e não tem tenant. A alternativa — completar com "a" clínica — transformaria
+   * uma credencial antiga em passe para uma clínica que ela nunca nomeou. Aqui ela
+   * simplesmente deixa de valer, e a pessoa entra de novo. Sessão de staff dura 8
+   * horas; o incômodo é de um dia, uma vez.
+   */
+  if (!u?.id || !u.perfil || !u.clinicaId) return null
 
-  return {
+  const ator: Ator = {
     usuarioId: u.id,
     nome: u.name ?? '',
     email: u.email ?? '',
     perfil: u.perfil,
     profissionalId: u.profissionalId ?? null,
+    clinicaId: u.clinicaId,
   }
+
+  /**
+   * O tenant entra no contexto assíncrono AQUI, e é o que faz as centenas de
+   * consultas do staff acertarem a clínica sem mencioná-la.
+   *
+   * Este é o ponto certo porque `atorAtual()` roda no começo de todo fluxo de
+   * staff — é o que `exigirAtor`, `exigirPermissao` e `exigirPermissaoPagina`
+   * chamam antes de qualquer coisa. Não existe caminho de staff que leia dado sem
+   * passar por aqui; se existisse, seria um furo de autorização antes de ser um
+   * furo de tenant.
+   */
+  definirClinicaDoContexto(ator.clinicaId)
+  return ator
 }
 
 /** Ator obrigatório. Lança `SemSessao` se não houver. */

@@ -17,6 +17,22 @@ export type TipoRecebido = 'texto' | 'botao' | 'outro'
 export interface MensagemRecebida {
   /** `wamid`. É a chave contra reentrega de webhook. */
   readonly idExterno: string
+  /**
+   * `phone_number_id` do número que RECEBEU a mensagem — **a única pista de
+   * tenant que o webhook tem**. Vem de `changes[].value.metadata`, não da
+   * mensagem, então é preenchido por `extrairEventos` e não por `lerMensagem`.
+   *
+   * `null` quando a Meta manda um lote sem `metadata`. Não é motivo para recusar o
+   * evento aqui: quem decide o que fazer sem tenant é a rota.
+   *
+   * **Opcional** de propósito, e não por comodidade: `extrairEventos` sempre
+   * preenche a chave (com `null` se não houver metadata), mas evento montado à mão
+   * — nas demonstrações e nos testes — legitimamente não tem número de origem
+   * nenhum. O tipo dizer "pode não existir" descreve a realidade melhor que
+   * obrigar todo teste a escrever `phoneNumberId: null`. A rota trata ausente e
+   * `null` igual: sem tenant, não processa.
+   */
+  readonly phoneNumberId?: string | null
   /** Remetente em E.164 sem `+`, como a Meta manda. */
   readonly remetente: string
   /** Texto para interpretar. Para áudio/imagem, um marcador legível. */
@@ -30,6 +46,8 @@ export type SituacaoExterna = 'entregue' | 'lida' | 'falhou'
 
 export interface AtualizacaoStatus {
   readonly idExterno: string
+  /** Mesmo `phone_number_id` da mensagem — ver `MensagemRecebida`. */
+  readonly phoneNumberId?: string | null
   readonly situacao: SituacaoExterna
   readonly em: Date
   readonly erro?: string
@@ -78,15 +96,25 @@ export function extrairEventos(bruto: unknown): EventosWebhook {
         continue
       }
 
+      /**
+       * O tenant do lote.
+       *
+       * Fica no `value.metadata`, uma vez por `change` — não em cada mensagem. Por
+       * isso é lido aqui e colado em cada evento: um webhook pode trazer mudanças
+       * de números diferentes na mesma entrega, e resolver o tenant uma vez por
+       * requisição daria a clínica errada para o segundo bloco.
+       */
+      const phoneNumberId = comoTexto(comoObjeto(valor.metadata)?.phone_number_id)
+
       for (const item of comoLista(valor.messages)) {
         const m = lerMensagem(item)
-        if (m) mensagens.push(m)
+        if (m) mensagens.push({ ...m, phoneNumberId })
         else ignorados++
       }
 
       for (const item of comoLista(valor.statuses)) {
         const s = lerStatus(item)
-        if (s) statuses.push(s)
+        if (s) statuses.push({ ...s, phoneNumberId })
         else ignorados++
       }
     }
@@ -95,7 +123,12 @@ export function extrairEventos(bruto: unknown): EventosWebhook {
   return { mensagens, statuses, ignorados }
 }
 
-function lerMensagem(bruto: unknown): MensagemRecebida | null {
+/**
+ * `Omit<…, 'phoneNumberId'>` porque o tenant não está na mensagem: está no
+ * `metadata` do bloco que a contém. O tipo diz isso — assim ninguém tenta ler
+ * `m.phone_number_id` aqui e recebe `undefined` calado.
+ */
+function lerMensagem(bruto: unknown): Omit<MensagemRecebida, 'phoneNumberId'> | null {
   const m = comoObjeto(bruto)
   if (!m) return null
 
@@ -139,7 +172,7 @@ function lerMensagem(bruto: unknown): MensagemRecebida | null {
   }
 }
 
-function lerStatus(bruto: unknown): AtualizacaoStatus | null {
+function lerStatus(bruto: unknown): Omit<AtualizacaoStatus, 'phoneNumberId'> | null {
   const s = comoObjeto(bruto)
   if (!s) return null
   const idExterno = comoTexto(s.id)

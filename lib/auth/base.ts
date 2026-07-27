@@ -29,6 +29,15 @@ declare module 'next-auth' {
       mfaAtivo: boolean
       /** Senha ditada pelo admin no cadastro: tem de ser trocada antes de usar o sistema. */
       senhaTemporaria: boolean
+      /**
+       * A clínica deste usuário. **Vem da credencial, nunca da URL.**
+       *
+       * Opcional no tipo por um motivo só: token emitido ANTES da Fase 17 não tem
+       * o campo. Quem lê tem de tratar a ausência como "sem sessão" — ver
+       * `atorAtual()` e o `logadoStaff` do middleware. Um token antigo não pode
+       * virar "clínica qualquer".
+       */
+      clinicaId?: string
     }
   }
 
@@ -37,6 +46,14 @@ declare module 'next-auth' {
     profissionalId: string | null
     mfaAtivo: boolean
     senhaTemporaria: boolean
+    /**
+     * Opcional no tipo porque o `Session['user']` do Auth.js é a INTERSEÇÃO deste
+     * `User` com o dele: declarar aqui como obrigatório tornava obrigatório lá, e
+     * apagava justamente a possibilidade que precisa ser representada — a de um
+     * token antigo sem tenant. O `authorize()` sempre preenche; quem lê sempre
+     * confere.
+     */
+    clinicaId?: string
   }
 }
 
@@ -48,6 +65,8 @@ declare module '@auth/core/jwt' {
     profissionalId: string | null
     mfaAtivo: boolean
     senhaTemporaria: boolean
+    /** Ausente em token emitido antes da Fase 17 — tratado como sessão inválida. */
+    clinicaId?: string
   }
 }
 
@@ -71,6 +90,11 @@ export const configBase = {
         token.profissionalId = user.profissionalId
         token.mfaAtivo = user.mfaAtivo
         token.senhaTemporaria = user.senhaTemporaria
+        // O tenant é gravado no token no LOGIN e não é relido depois. Mudar a
+        // clínica de um usuário existente é operação que não existe (seria mudar
+        // de empregador), e reler a cada requisição custaria uma consulta por
+        // requisição para um valor que não muda.
+        token.clinicaId = user.clinicaId
       }
       // Depois de configurar o MFA ou de trocar a senha, o token é atualizado
       // sem novo login — senão a pessoa ficaria presa na própria tela que
@@ -88,6 +112,7 @@ export const configBase = {
       session.user.profissionalId = token.profissionalId
       session.user.mfaAtivo = token.mfaAtivo
       session.user.senhaTemporaria = token.senhaTemporaria === true
+      session.user.clinicaId = token.clinicaId
       return session
     },
   },

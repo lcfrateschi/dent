@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  foreignKey,
   boolean,
   check,
   index,
@@ -7,6 +8,7 @@ import {
   smallint,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
 import { profissional, usuario } from './acesso'
@@ -16,14 +18,23 @@ import {
   statusAgendamentoEnum,
 } from './enums'
 import { paciente } from './pacientes'
+import { clinicaId } from './tenant'
 
 /** Cadeira/consultório. Recurso físico que limita atendimentos simultâneos. */
-export const cadeira = pgTable('cadeira', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  nome: text('nome').notNull().unique(),
-  ordem: smallint('ordem').notNull().default(0),
-  ativo: boolean('ativo').notNull().default(true),
-})
+export const cadeira = pgTable(
+  'cadeira',
+  {
+    clinicaId: clinicaId(),
+    id: uuid('id').primaryKey().defaultRandom(),
+    nome: text('nome').notNull(),
+    ordem: smallint('ordem').notNull().default(0),
+    ativo: boolean('ativo').notNull().default(true),
+  },
+  // O nome era único GLOBAL. Com várias clínicas, "Consultório 1" existe em
+  // todas: a unicidade passa a ser POR CLÍNICA. Deixar o `unique()` global seria
+  // a segunda clínica não conseguir cadastrar a própria cadeira.
+  (t) => [uniqueIndex('cadeira_nome_por_clinica_uk').on(t.clinicaId, t.nome)],
+)
 
 /**
  * Reserva de profissional + cadeira + intervalo para um paciente.
@@ -35,13 +46,10 @@ export const cadeira = pgTable('cadeira', {
 export const agendamento = pgTable(
   'agendamento',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    pacienteId: uuid('paciente_id')
-      .notNull()
-      .references(() => paciente.id, { onDelete: 'restrict' }),
-    profissionalId: uuid('profissional_id')
-      .notNull()
-      .references(() => profissional.id, { onDelete: 'restrict' }),
+    pacienteId: uuid('paciente_id').notNull(),
+    profissionalId: uuid('profissional_id').notNull(),
     cadeiraId: uuid('cadeira_id').references(() => cadeira.id, { onDelete: 'set null' }),
     inicio: timestamp('inicio', { withTimezone: true }).notNull(),
     fim: timestamp('fim', { withTimezone: true }).notNull(),
@@ -65,6 +73,16 @@ export const agendamento = pgTable(
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'agendamento_paciente_id_paciente_id_fk',
+      columns: [t.pacienteId, t.clinicaId],
+      foreignColumns: [paciente.id, paciente.clinicaId],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'agendamento_profissional_id_profissional_id_fk',
+      columns: [t.profissionalId, t.clinicaId],
+      foreignColumns: [profissional.id, profissional.clinicaId],
+    }).onDelete('restrict'),
     index('agendamento_profissional_periodo_idx').on(t.profissionalId, t.inicio),
     index('agendamento_paciente_idx').on(t.pacienteId, t.inicio),
     index('agendamento_dia_idx').on(t.inicio),
@@ -83,11 +101,10 @@ export const agendamento = pgTable(
 export const bloqueioAgenda = pgTable(
   'bloqueio_agenda',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    profissionalId: uuid('profissional_id').references(() => profissional.id, {
-      onDelete: 'cascade',
-    }),
-    cadeiraId: uuid('cadeira_id').references(() => cadeira.id, { onDelete: 'cascade' }),
+    profissionalId: uuid('profissional_id'),
+    cadeiraId: uuid('cadeira_id'),
     inicio: timestamp('inicio', { withTimezone: true }).notNull(),
     fim: timestamp('fim', { withTimezone: true }).notNull(),
     motivo: text('motivo').notNull(),
@@ -95,6 +112,16 @@ export const bloqueioAgenda = pgTable(
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'bloqueio_agenda_cadeira_id_cadeira_id_fk',
+      columns: [t.cadeiraId, t.clinicaId],
+      foreignColumns: [cadeira.id, cadeira.clinicaId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'bloqueio_agenda_profissional_id_profissional_id_fk',
+      columns: [t.profissionalId, t.clinicaId],
+      foreignColumns: [profissional.id, profissional.clinicaId],
+    }).onDelete('cascade'),
     index('bloqueio_periodo_idx').on(t.inicio, t.fim),
     check('bloqueio_intervalo_valido', sql`${t.fim} > ${t.inicio}`),
   ],

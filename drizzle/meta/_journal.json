@@ -155,6 +155,118 @@
       "when": 1785110800000,
       "tag": "0021_administracao_travas",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1785118894795,
+      "tag": "0022_multi_tenant",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785118894900,
+      "tag": "0023_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785118895000,
+      "tag": "0024_tenant_do_webhook",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1785124127227,
+      "tag": "0025_fks_compostos_declarados",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1785124128227,
+      "tag": "0027_assinatura",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1785126666680,
+      "tag": "0028_baseline_da_assinatura",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1785126667680,
+      "tag": "0029_relacionamento",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1785127839524,
+      "tag": "0030_baseline_do_relacionamento",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1785127840524,
+      "tag": "0031_autoatendimento",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1785132150168,
+      "tag": "0032_baseline_do_autoatendimento",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1785133738401,
+      "tag": "0033_indice_da_lista_espera",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1785133739401,
+      "tag": "0034_fechamento_financeiro",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1785139328962,
+      "tag": "0035_baseline_do_fechamento",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1785140993917,
+      "tag": "0036_baseline_da_base_de_comissao",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1785140994917,
+      "tag": "0037_profundidade_clinica",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1785148754837,
+      "tag": "0038_baseline_da_profundidade_clinica",
+      "breakpoints": true
     }
   ]
 }

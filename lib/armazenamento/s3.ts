@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { chaveEhSegura } from '@/lib/domain/arquivo'
 import { type CredenciaisAws, assinarPedido, sha256Hex } from './sigv4'
-import { ErroArmazenamento, type ArquivoGuardado, type ProvedorArmazenamento } from './tipos'
+import { ErroArmazenamento, exigirTenantNaChave, type ArquivoGuardado, type ProvedorArmazenamento } from './tipos'
 
 /**
  * Armazenamento em S3 ou Cloudflare R2 (bucket PRIVADO).
@@ -52,6 +52,7 @@ export class ArmazenamentoS3 implements ProvedorArmazenamento {
   }
 
   async salvar(chave: string, conteudo: Uint8Array, mime: string): Promise<ArquivoGuardado> {
+    exigirTenantNaChave(chave)
     this.conferirChave(chave)
 
     // Não sobrescreve: anexo de prontuário perdido não volta. `If-None-Match: *`

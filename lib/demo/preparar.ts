@@ -27,7 +27,16 @@ import {
 import { addDias } from '@/lib/domain/datas'
 import { instanteDe } from '@/lib/domain/fuso'
 import { hojeDaClinica } from '@/lib/orcamento/consultas'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
 import { eq, or, sql } from 'drizzle-orm'
+import { Client } from 'pg'
+import { seedMateriais } from '@/lib/db/seed/materiais'
+import { seedProcedimentos } from '@/lib/db/seed/procedimentos'
+import { seedRegrasRetorno } from '@/lib/db/seed/regrasRetorno'
+import { exigirClinicaDaDemo, idDaClinicaDaDemo } from './clinicaDaDemo'
+import { garantirAssinatura } from '@/lib/onboarding/assinaturaPadrao'
+import { comClinica } from '@/lib/tenant/executar'
+import { desligarTriggersDeAplicacao, religarTriggersDeAplicacao } from './triggers'
 
 /**
  * Prepara um ambiente de TESTE com dados realistas e credenciais conhecidas.
@@ -83,48 +92,156 @@ async function main(): Promise<void> {
 
   console.log('\n═══ Preparando ambiente de teste do Facilident ═══')
 
-  const hoje = await hojeDaClinica()
-
   // ── 1. A clínica ───────────────────────────────────────────────────────────
   // Sem isso o orçamento sai sem cabeçalho e o atestado sem CRO.
+  //
+  // Ela vem ANTES de tudo e devolve o id porque **é o tenant do resto do
+  // script**. Antes, `main()` inteiro contava com o atalho de "existe uma clínica
+  // só": o `lib/db/index.ts` preenchia `app.clinica_id` a partir da única linha da
+  // tabela. Num banco que já tinha a clínica do `db:seed`, este script criava a
+  // segunda e o atalho passava a estourar com "more than one row returned by a
+  // subquery" — o fail-closed funcionando, e o script morrendo na seção 2.
+  //
+  // Um script de linha de comando declara o próprio contexto. Ele não é uma
+  // requisição HTTP com sessão, então não há de onde herdar.
   titulo('1. Configuração da clínica')
-  await db
-    .insert(clinica)
-    .values({
-      id: 1,
-      razaoSocial: 'Clínica Odontológica Sorriso Vivo Ltda',
-      nomeFantasia: 'Sorriso Vivo',
-      cnpj: '11222333000181',
-      croResponsavel: '54321',
-      ufCroResponsavel: 'SP',
-      telefone: '1133334444',
-      email: 'contato@sorrisovivo.demo.local',
-      cep: '01310100',
-      logradouro: 'Avenida Paulista',
-      numero: '1000',
-      bairro: 'Bela Vista',
-      cidade: 'São Paulo',
-      uf: 'SP',
-    })
-    .onConflictDoUpdate({
-      target: clinica.id,
-      set: {
-        razaoSocial: sql`excluded.razao_social`,
-        nomeFantasia: sql`excluded.nome_fantasia`,
-        cnpj: sql`excluded.cnpj`,
-        croResponsavel: sql`excluded.cro_responsavel`,
-        ufCroResponsavel: sql`excluded.uf_cro_responsavel`,
-        telefone: sql`excluded.telefone`,
-        email: sql`excluded.email`,
-        cep: sql`excluded.cep`,
-        logradouro: sql`excluded.logradouro`,
-        numero: sql`excluded.numero`,
-        bairro: sql`excluded.bairro`,
-        cidade: sql`excluded.cidade`,
-        uf: sql`excluded.uf`,
-      },
-    })
+  /**
+   * A clínica da demonstração é identificada pelo CNPJ, não por `id = 1`.
+   *
+   * `clinica` virou o tenant e o id é uuid gerado — um `ON CONFLICT (id)` nunca
+   * mais colide, e rodar `demo:preparar` duas vezes criaria uma segunda clínica
+   * Sorriso Vivo com os mesmos pacientes dentro. O CNPJ tem índice único parcial
+   * (`clinica_cnpj_uk`), e é a chave natural certa aqui. O `WHERE` repetindo o
+   * predicado do índice é exigência do Postgres para índice parcial — sem ele o
+   * erro é "no unique or exclusion constraint matching the ON CONFLICT
+   * specification", que não diz a palavra "parcial".
+   *
+   * ── Por que um cliente `pg` cru, e não o `db` do projeto ──────────────────
+   * Porque criar clínica é a única operação do sistema que acontece SEM tenant —
+   * é o onboarding, e não existe clínica ainda para pôr no contexto.
+   *
+   * O `db` (`lib/db/index.ts`) define `app.clinica_id` em toda acquisição de
+   * conexão e, sem contexto de sessão, cai na subconsulta escalar
+   * `(select id from clinica)`. Com DUAS clínicas no banco ela estoura de
+   * propósito — "more than one row returned by a subquery" —, o que é o
+   * fail-closed correto para uma consulta de dado de paciente e é uma parede para
+   * esta linha aqui: num banco que já tem a clínica do `db:seed`, o `demo:preparar`
+   * não conseguia nem LER a tabela `clinica`, muito menos inserir nela.
+   *
+   * Então esta única instrução usa conexão própria, sem o envelope. Tudo o que vem
+   * depois volta para o `db`, dentro de `comContextoDeClinica`.
+   *
+   * ⚠️ Isto é contorno de script de demonstração, não desenho. O onboarding de
+   * verdade precisa de um caminho declarado "sem tenant" em `lib/db/index.ts` —
+   * está anotado no relatório da Fase 17.
+   */
+  const conexaoDeOnboarding = new Client({ connectionString: process.env.DATABASE_URL })
+  await conexaoDeOnboarding.connect()
+  let clinicaDaDemo: string
+  try {
+    const r = await conexaoDeOnboarding.query<{ id: string }>(
+      `insert into clinica (
+         razao_social, nome_fantasia, cnpj, cro_responsavel, uf_cro_responsavel,
+         telefone, email, cep, logradouro, numero, bairro, cidade, uf)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       on conflict (cnpj) where cnpj is not null do update set
+         razao_social = excluded.razao_social,
+         nome_fantasia = excluded.nome_fantasia,
+         cro_responsavel = excluded.cro_responsavel,
+         uf_cro_responsavel = excluded.uf_cro_responsavel,
+         telefone = excluded.telefone,
+         email = excluded.email,
+         cep = excluded.cep,
+         logradouro = excluded.logradouro,
+         numero = excluded.numero,
+         bairro = excluded.bairro,
+         cidade = excluded.cidade,
+         uf = excluded.uf
+       returning id`,
+      [
+        'Clínica Odontológica Sorriso Vivo Ltda',
+        'Sorriso Vivo',
+        '11222333000181',
+        '54321',
+        'SP',
+        '1133334444',
+        'contato@sorrisovivo.demo.local',
+        '01310100',
+        'Avenida Paulista',
+        '1000',
+        'Bela Vista',
+        'São Paulo',
+        'SP',
+      ],
+    )
+    const linha = r.rows[0]
+    if (!linha) throw new Error('o upsert da clínica não devolveu id')
+    clinicaDaDemo = linha.id
+  } finally {
+    await conexaoDeOnboarding.end()
+  }
   console.log('   Sorriso Vivo · CNPJ 11.222.333/0001-81 · CRO-SP 54321')
+
+  // Daqui para baixo, todo `db.*` roda com esta clínica no contexto — é o
+  // AsyncLocalStorage de `lib/tenant/contexto.ts` que `lib/db/index.ts` lê ao pegar
+  // conexão. Nenhuma das ~200 escritas abaixo precisou aprender o que é tenant.
+  await comContextoDeClinica(clinicaDaDemo, () => prepararDados())
+}
+
+async function prepararDados(): Promise<void> {
+  // Contrato da clínica de demonstração. A `drizzle/0027` só dá assinatura às
+  // clínicas que existiam quando ela rodou; num banco recriado, esta nasce depois.
+  // Sem isto o caso 19 de `verificar-assinatura.sql` reprova — e ele é a única
+  // coisa que enxerga clínica sem contrato, já que a escrita destrava por decisão.
+  await comClinica(await exigirClinicaDaDemo(), (tx) => garantirAssinatura(tx))
+
+  const hoje = await hojeDaClinica()
+
+  // ── 1b. O catálogo DA CLÍNICA ──────────────────────────────────────────────
+  /**
+   * Sem isto, o `demo:preparar` montava um plano de tratamento cujos `item_plano`
+   * apontavam para `procedimento` de OUTRA clínica.
+   *
+   * O erro era silencioso e fácil de cometer: as consultas abaixo procuram
+   * procedimento por código (`DENT-001`) e cadeira pelas duas primeiras linhas,
+   * presumindo que `npm run db:seed` já as criou. E ele criou — **para a clínica
+   * dele**. Na 0022 o catálogo virou por clínica (valor particular, `requer_dente`
+   * e ficha técnica são decisão de cada uma), então a clínica da demonstração
+   * nascia com zero procedimentos e ia buscar os do vizinho. Medido: 4 itens de
+   * plano cruzando clínica.
+   *
+   * Enquanto o FK olhava só `procedimento_id`, isso entrava e ninguém via. Com o FK
+   * composto `(procedimento_id, clinica_id)` da `drizzle/0023`, passa a ser
+   * recusado — o banco vira o revisor.
+   *
+   * A correção certa não é afrouxar o FK nem apontar para o catálogo alheio: é a
+   * clínica ter o próprio catálogo, que é o que o onboarding faz. Os mesmos
+   * `seedProcedimentos`/`seedMateriais` do `db:seed`, rodando no contexto desta
+   * clínica — o `clinica_id` sai do DEFAULT.
+   */
+  const qtdProcs = await seedProcedimentos(db)
+  const qtdMats = await seedMateriais(db)
+  const cadeirasDaDemo = await db
+    .insert(cadeira)
+    .values([
+      { nome: 'Consultório 1', ordem: 1 },
+      { nome: 'Consultório 2', ordem: 2 },
+    ])
+    .onConflictDoUpdate({
+      target: [cadeira.clinicaId, cadeira.nome],
+      set: { ordem: sql`excluded.ordem` },
+    })
+    .returning({ id: cadeira.id })
+  /**
+   * As regras de retorno, pelo mesmo motivo do catálogo: elas apontam para
+   * `procedimento` desta clínica, e o `db:seed` as criou para a clínica DELE.
+   * Sem isto a fila de retorno programado fica silenciosa aqui — e silêncio numa
+   * fila parece funcionalidade quebrada, não configuração ausente.
+   */
+  const regras = await seedRegrasRetorno(db)
+  console.log(
+    `   catálogo próprio: ${qtdProcs} procedimentos, ${qtdMats.materiais} materiais, 2 cadeiras, ${regras.criadas} regras de retorno`,
+  )
 
   // ── 2. Equipe ──────────────────────────────────────────────────────────────
   titulo('2. Equipe (um usuário por perfil, com MFA já configurado)')
@@ -185,8 +302,21 @@ async function main(): Promise<void> {
   await criarStaff('financeiro', 'Financeiro Fábio', 'financeiro')
 
   // ── 3. Cadeiras ────────────────────────────────────────────────────────────
-  const cadeiras = await db.select({ id: cadeira.id, nome: cadeira.nome }).from(cadeira).limit(2)
-  const cadeiraA = cadeiras[0]!.id
+  /**
+   * A cadeira vem do `returning` do upsert acima, não de uma leitura nova.
+   *
+   * Aqui estava `db.select().from(cadeira).limit(2)` — sem filtro e sem ordem. Num
+   * banco com duas clínicas ela devolvia "duas cadeiras quaisquer", e como a clínica
+   * do `db:seed` também tem 'Consultório 1' e 'Consultório 2' e nasceu antes, o
+   * script marcava **7 agendamentos na cadeira da outra clínica**. Medido, não
+   * suposto.
+   *
+   * É a mesma família das dez leituras `.from(clinica).limit(1)` que a Fase 17
+   * corrigiu na aplicação: `LIMIT` sem `ORDER BY` e sem `WHERE` não é uma consulta,
+   * é um sorteio. Usar o que acabei de inserir dispensa filtro, ordem e sorte.
+   */
+  const cadeiraA = cadeirasDaDemo[0]?.id
+  if (!cadeiraA) throw new Error('o upsert das cadeiras não devolveu id')
 
   // ── 4. Pacientes ───────────────────────────────────────────────────────────
   titulo('3. Pacientes')
@@ -583,10 +713,32 @@ async function main(): Promise<void> {
 
 async function limpar(): Promise<void> {
   console.log('\nRemovendo dados de demonstração…')
+
+  /**
+   * `pool.connect()` também passa pelo envelope de `lib/db/index.ts`, então com
+   * duas clínicas no banco esta linha estourava antes de apagar nada. O contexto da
+   * clínica da demonstração resolve — e restringe: os `delete` abaixo filtram por
+   * `[DEMO]%` e `@demo.local`, e agora só alcançam a clínica da demonstração.
+   *
+   * Se ela não existe, não há o que limpar.
+   */
+  const clinicaDemo = await idDaClinicaDaDemo()
+  if (!clinicaDemo) {
+    console.log('  nada a remover: a clínica de demonstração não existe neste banco.\n')
+    return
+  }
+  await comContextoDeClinica(clinicaDemo, () => limparDados())
+}
+
+async function limparDados(): Promise<void> {
   const c = await pool.connect()
   try {
     await c.query('begin')
-    await c.query("set local session_replication_role = 'replica'")
+    // Desliga só as triggers de APLICAÇÃO — as de FK ficam de pé. O
+    // `session_replication_role` que estava aqui desligava as duas, e já deixou
+    // 5 linhas órfãs em movimento_estoque, o que derrubou a 0023. Ver
+    // lib/demo/triggers.ts.
+    const tabelasDesligadas = await desligarTriggersDeAplicacao(c)
 
     // Ordem: do mais dependente para o menos.
     await c.query(`delete from movimento_estoque where lote_id in (
@@ -633,6 +785,9 @@ async function limpar(): Promise<void> {
       select id from usuario where email like '%@demo.local')`)
     await c.query(`delete from usuario where email like '%@demo.local'`)
 
+    // ANTES do commit: `disable trigger` é DDL — comitar desligado deixaria o
+    // prontuário editável para sempre, em silêncio.
+    await religarTriggersDeAplicacao(c, tabelasDesligadas)
     await c.query('commit')
     console.log('✓ ambiente de demonstração removido. O seed de referência permanece.\n')
   } catch (e) {

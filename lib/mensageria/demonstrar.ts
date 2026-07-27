@@ -18,6 +18,9 @@ import { enfileirarLembrete } from './fila'
 import { extrairEventos } from './payload'
 import { ProvedorSimulado } from './provedor'
 import { aplicarStatus, processarMensagemRecebida } from './receber'
+import { desligarTriggersDeAplicacao, religarTriggersDeAplicacao } from '@/lib/demo/triggers'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
+import { idDaPrimeiraClinica } from '@/lib/demo/clinicaDaDemo'
 
 /**
  * Demonstração ponta a ponta da Fase 9, contra o Postgres de verdade.
@@ -364,8 +367,12 @@ async function main(): Promise<void> {
  *
  * As triggers proíbem DELETE em `mensagem_whatsapp` e `resposta_whatsapp`, de
  * propósito — é a garantia legal. Para a demonstração não deixar lixo, a limpeza
- * usa `session_replication_role = 'replica'`, que desliga as triggers de usuário
- * dentro da transação.
+ * desliga as triggers de APLICAÇÃO dentro da transação, via
+ * `lib/demo/triggers.ts`, e as religa antes do commit.
+ *
+ * Aqui havia `session_replication_role = 'replica'`, que fazia isso e mais um
+ * pouco: desligava também as triggers internas de FK. Já custou 5 linhas órfãs em
+ * `movimento_estoque` e uma migration que não aplicava.
  *
  * ⚠️ Isto exige superusuário e existe **apenas aqui**. Nenhum caminho de
  * aplicação faz isso; se algum dia fizer, a garantia de retenção deixou de valer.
@@ -380,7 +387,11 @@ async function limpar(c: {
   const cliente = await db.$client.connect()
   try {
     await cliente.query('begin')
-    await cliente.query("set local session_replication_role = 'replica'")
+    // Desliga só as triggers de APLICAÇÃO — as de FK ficam de pé. O
+    // `session_replication_role` que estava aqui desligava as duas, e já deixou
+    // 5 linhas órfãs em movimento_estoque, o que derrubou a 0023. Ver
+    // lib/demo/triggers.ts.
+    const tabelasDesligadas = await desligarTriggersDeAplicacao(cliente)
     await cliente.query('delete from resposta_whatsapp where paciente_id = $1 or remetente = $2', [
       c.pacienteId,
       '5511900000001',
@@ -393,6 +404,9 @@ async function limpar(c: {
     await cliente.query('delete from profissional where id = $1', [c.profId])
     await cliente.query('delete from usuario where id = $1', [c.usuarioId])
     await cliente.query('delete from cadeira where id = $1', [c.cadeiraId])
+    // ANTES do commit: `disable trigger` é DDL — comitar desligado deixaria o
+    // prontuário editável para sempre, em silêncio.
+    await religarTriggersDeAplicacao(cliente, tabelasDesligadas)
     await cliente.query('commit')
     console.log('Dados da demonstração removidos.')
   } catch (e) {
@@ -403,7 +417,21 @@ async function limpar(c: {
   }
 }
 
-main()
+/**
+ * O contexto de clínica é aberto AQUI, envolvendo o `main()` inteiro.
+ *
+ * Script de linha de comando não tem sessão de onde herdar o tenant, e desde a
+ * `drizzle/0022` toda escrita depende de `app.clinica_id` — `app_clinica_id()`
+ * estoura sem ele, de propósito, para "esqueci o contexto" não virar linha gravada
+ * na clínica errada.
+ *
+ * Envolver no ponto de entrada, e não dentro de `main()`, é de propósito: qualquer
+ * função que `main()` chame, hoje ou amanhã, herda o contexto pelo
+ * `AsyncLocalStorage`. Espalhar `comContextoDeClinica` por dentro deixaria brecha
+ * na próxima função acrescentada.
+ */
+idDaPrimeiraClinica()
+  .then((clinicaId) => comContextoDeClinica(clinicaId, main))
   .then(() => process.exit(process.exitCode ?? 0))
   .catch((e) => {
     console.error(e)

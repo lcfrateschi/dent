@@ -45,9 +45,59 @@ const MENU: readonly ItemMenu[] = [
   { href: '/agenda', rotulo: 'Agenda', recursos: ['agenda'], icone: 'agenda' },
   { href: '/whatsapp', rotulo: 'WhatsApp', recursos: ['mensageria'], icone: 'whatsapp' },
   { href: '/financeiro', rotulo: 'Financeiro', recursos: ['cobranca'], icone: 'financeiro' },
+  {
+    href: '/caixa',
+    // "Caixa" e não "Despesas": a tela responde "quanto entrou e saiu do banco", e
+    // despesa é uma parte. O rótulo do menu é a primeira pista de qual pergunta a tela
+    // responde — e este módulo tem TRÊS respostas diferentes para o mesmo mês (caixa
+    // por `pago_em`, custo por `competencia`, dívida por `vencimento`).
+    rotulo: 'Caixa',
+    // Recurso PRÓPRIO, não `cobranca`. Dinheiro que sai da clínica é confiança
+    // diferente do dinheiro que entra do paciente: com `cobranca`, a recepção passaria
+    // a poder pagar o aluguel e estornar a conta do laboratório.
+    recursos: ['despesa'],
+    // Vizinho de `/financeiro` de propósito, e ícone igual pelo mesmo motivo: são os
+    // dois lados do mesmo assunto. Se a semelhança confundir na prática, o conserto é
+    // um ícone próprio em `Icone.tsx`.
+    icone: 'financeiro',
+  },
   { href: '/auditoria', rotulo: 'Auditoria', recursos: ['auditoria'], icone: 'auditoria' },
   { href: '/convenios', rotulo: 'Convênios', recursos: ['convenio'], icone: 'convenios' },
+  {
+    href: '/relacionamento',
+    rotulo: 'Relacionamento',
+    recursos: ['relacionamento'],
+    // `whatsapp` reusado: a fila é sobre FALAR com o paciente, e o ícone de conversa
+    // diz isso melhor que um de lista. Ícone próprio quando o design system tiver um.
+    icone: 'whatsapp',
+  },
+  {
+    href: '/espera',
+    rotulo: 'Lista de espera',
+    // `relacionamento` reusado com argumento: é fila de contato ativo trabalhada pela
+    // recepção, mesma forma e mesmo perfil das filas da Fase 18.
+    recursos: ['relacionamento'],
+    icone: 'agenda',
+  },
+  {
+    href: '/laboratorio',
+    rotulo: 'Laboratório',
+    // `laboratorio` e não `plano_tratamento`, e o motivo é operacional: com
+    // `plano_tratamento` a **recepção só tem `ler`** — e é ela quem liga para o
+    // laboratório e marca que a peça voltou. Um módulo que a pessoa que o usa não pode
+    // editar não é módulo, é relatório.
+    recursos: ['laboratorio'],
+    icone: 'cobranca',
+  },
   { href: '/estoque', rotulo: 'Estoque', recursos: ['estoque'], icone: 'estoque' },
+  {
+    href: '/esterilizacao',
+    rotulo: 'Esterilização',
+    // `estoque` reusado: processamento de instrumental é o mundo da auxiliar, o mesmo
+    // que já cuida de material e lote. Vizinho de Estoque pelo mesmo motivo.
+    recursos: ['estoque'],
+    icone: 'estoque',
+  },
   { href: '/usuarios', rotulo: 'Usuários', recursos: ['usuario'], icone: 'usuarios' },
   { href: '/configuracoes', rotulo: 'Ajustes', recursos: ['configuracao'], icone: 'ajustes' },
 ]

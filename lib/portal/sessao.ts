@@ -2,6 +2,8 @@ import { registrarDoPaciente } from '@/lib/auditoria/registrar'
 import { gerarTokenDeSessao, hashDoTokenDeSessao } from '@/lib/auth/convite'
 import { db } from '@/lib/db'
 import { paciente, pacienteConta, pacienteSessao } from '@/lib/db/schema'
+import { definirClinicaDoContexto } from '@/lib/tenant/contexto'
+import { clinicaDaSessaoDoPortal } from '@/lib/tenant/resolver'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { cookies, headers } from 'next/headers'
 
@@ -59,6 +61,15 @@ export interface SessaoPortal {
   readonly pacienteId: string
   readonly nome: string
   readonly email: string
+  /**
+   * A clínica deste paciente.
+   *
+   * Vem da linha da CONTA, achada pelo hash do token do cookie — o mesmo caminho
+   * que já responde "de quem é este dado". Não vem de parâmetro nem de subdomínio:
+   * o paciente não escolhe a clínica em que está sendo lido, do mesmo jeito que não
+   * escolhe o próprio `pacienteId`.
+   */
+  readonly clinicaId: string
 }
 
 async function origem(): Promise<{ ip: string | null; userAgent: string | null }> {
@@ -130,6 +141,31 @@ export async function sessaoAtual(): Promise<SessaoPortal | null> {
   const token = jar.get(COOKIE_PORTAL)?.value
   if (!token) return null
 
+  const hash = hashDoTokenDeSessao(token)
+
+  /**
+   * ── Resolver a clínica ANTES de ler a sessão ────────────────────────────────
+   *
+   * Mesmo ovo e mesma galinha do login do staff: sob `FORCE ROW LEVEL SECURITY`, a
+   * consulta abaixo só devolve linha com `app.clinica_id` definido, e é ela que
+   * descobre de quem é a sessão. Sem este passo, **todo paciente do portal ficaria
+   * de fora** — e o sintoma seria "minha sessão expira na hora", não "a RLS".
+   *
+   * `clinica_da_sessao_do_portal` recebe o hash e devolve só um uuid. Ela ignora
+   * expiração, conta desativada e paciente arquivado de propósito: essas três
+   * verificações continuam abaixo, onde já estavam e onde têm teste. Mover
+   * validação de sessão para dentro de uma função `SECURITY DEFINER` seria tirá-la
+   * do lugar onde ela é lida e revisada.
+   *
+   * `definirClinicaDoContexto` (e não `comContextoDeClinica`) porque o tenant tem
+   * de valer para **o resto da requisição**, não só para esta consulta: as
+   * consultas de `lib/portal/consultas.ts` vêm depois e acertam a clínica sem
+   * mencioná-la.
+   */
+  const clinicaDaSessao = await clinicaDaSessaoDoPortal(hash)
+  if (!clinicaDaSessao) return null
+  definirClinicaDoContexto(clinicaDaSessao)
+
   const [linha] = await db
     .select({
       sessaoId: pacienteSessao.id,
@@ -138,6 +174,7 @@ export async function sessaoAtual(): Promise<SessaoPortal | null> {
       nome: paciente.nome,
       nomeSocial: paciente.nomeSocial,
       email: pacienteConta.email,
+      clinicaId: pacienteConta.clinicaId,
       expiraEm: pacienteSessao.expiraEm,
       contaAtiva: pacienteConta.ativo,
       statusPaciente: paciente.status,
@@ -146,10 +183,7 @@ export async function sessaoAtual(): Promise<SessaoPortal | null> {
     .innerJoin(pacienteConta, eq(pacienteConta.id, pacienteSessao.contaId))
     .innerJoin(paciente, eq(paciente.id, pacienteConta.pacienteId))
     .where(
-      and(
-        eq(pacienteSessao.tokenHash, hashDoTokenDeSessao(token)),
-        isNull(pacienteSessao.revogadaEm),
-      ),
+      and(eq(pacienteSessao.tokenHash, hash), isNull(pacienteSessao.revogadaEm)),
     )
 
   if (!linha) return null
@@ -166,12 +200,31 @@ export async function sessaoAtual(): Promise<SessaoPortal | null> {
     .set({ ultimoUsoEm: new Date() })
     .where(eq(pacienteSessao.id, linha.sessaoId))
 
+  /**
+   * Contraprova barata, e ela não é decoração.
+   *
+   * `clinica_da_sessao_do_portal` leu o tenant da `paciente_sessao`; a consulta
+   * acima leu o tenant da `paciente_conta`, já sob a política. Se os dois
+   * discordassem, alguma coisa estaria muito errada — sessão apontando para conta
+   * de outra clínica é exatamente a forma que um vazamento entre clientes tomaria
+   * neste caminho. Recusar é a única resposta defensável, e a linha de log existe
+   * porque isto nunca deve acontecer em silêncio.
+   */
+  if (linha.clinicaId !== clinicaDaSessao) {
+    console.error(
+      '[portal] sessão e conta discordam da clínica — sessão recusada',
+      { sessaoId: linha.sessaoId },
+    )
+    return null
+  }
+
   return {
     sessaoId: linha.sessaoId,
     contaId: linha.contaId,
     pacienteId: linha.pacienteId,
     nome: linha.nomeSocial ?? linha.nome,
     email: linha.email,
+    clinicaId: linha.clinicaId,
   }
 }
 
@@ -199,16 +252,29 @@ export async function encerrarSessao(): Promise<void> {
   const jar = await cookies()
   const token = jar.get(COOKIE_PORTAL)?.value
 
-  if (token) {
+  /**
+   * `sairDoPortal()` (`lib/portal/acoes.ts`) chama esta função **sem** passar por
+   * `exigirSessao()` antes — não há contexto de clínica nesta requisição.
+   *
+   * Sob RLS isso deixaria o `UPDATE` casar **zero linhas**, em silêncio: o cookie
+   * seria apagado, a pessoa veria a tela de login, e a sessão continuaria **válida
+   * no banco**. Quem tivesse capturado o token seguiria dentro depois de o paciente
+   * clicar em "sair" — o oposto do que o botão promete. Nada nem ninguém acusaria
+   * o erro, porque `UPDATE` que não casa linha não é exceção.
+   *
+   * Por isso o tenant é resolvido aqui também, a partir do próprio hash.
+   */
+  const hash = token ? hashDoTokenDeSessao(token) : null
+  if (hash) {
+    const clinicaDaSessao = await clinicaDaSessaoDoPortal(hash)
+    if (clinicaDaSessao) definirClinicaDoContexto(clinicaDaSessao)
+  }
+
+  if (token && hash) {
     const [encerrada] = await db
       .update(pacienteSessao)
       .set({ revogadaEm: new Date() })
-      .where(
-        and(
-          eq(pacienteSessao.tokenHash, hashDoTokenDeSessao(token)),
-          isNull(pacienteSessao.revogadaEm),
-        ),
-      )
+      .where(and(eq(pacienteSessao.tokenHash, hash), isNull(pacienteSessao.revogadaEm)))
       .returning({ id: pacienteSessao.id, contaId: pacienteSessao.contaId })
 
     if (encerrada) {

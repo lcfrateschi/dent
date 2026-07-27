@@ -9,6 +9,8 @@
  * Então a checagem fica aqui, no runtime, onde `NODE_ENV` já é confiável.
  */
 
+import { MFA_CHAVE_DEV } from './mfaSegredo'
+
 const SEGREDO_DEV = 'dev-secret-trocar-em-producao-0123456789abcdef'
 const MIN_CARACTERES = 32
 
@@ -51,6 +53,49 @@ export function exigirSegredoDeProducao(): void {
         'clínico de todos os pacientes. Remova a chave do ambiente.',
     )
   }
+
+  /**
+   * A chave que cifra o segredo do segundo fator.
+   *
+   * Fica **junto** da checagem acima, e não no fim, porque as duas são sobre a mesma
+   * coisa: quem for procurar "o que garante o MFA em produção" acha os dois casos no
+   * mesmo lugar, em vez de descobrir metade.
+   *
+   * A gravidade é menor que a de `MFA_DESABILITADO` e é real: com a chave pública,
+   * um dump de banco volta a entregar o segundo fator de todos os usuários. Não é
+   * bypass — ainda exige a senha —, é o agravamento que cifrar existe para tirar. Sem
+   * chave nenhuma, `cifrarSegredo()` estoura na primeira gravação, o que seria uma
+   * falha em produção descoberta pelo usuário; melhor descobrir no boot.
+   */
+  const chaveMfa = process.env.MFA_CHAVE
+  if (!chaveMfa) {
+    throw new Error(
+      'MFA_CHAVE não definida. Ela cifra o segredo do segundo fator em repouso — ' +
+        'sem ela o sistema não consegue gravar segredo novo. ' +
+        'Gere uma com: openssl rand -base64 48',
+    )
+  }
+  if (chaveMfa === MFA_CHAVE_DEV) {
+    throw new Error(
+      'MFA_CHAVE está com o valor de desenvolvimento, que é público. ' +
+        'Com ele, um dump do banco entrega o segundo fator de todos os usuários. ' +
+        'Gere uma própria com: openssl rand -base64 48',
+    )
+  }
+  if (chaveMfa.length < MIN_CARACTERES) {
+    throw new Error(
+      `MFA_CHAVE curta demais (${chaveMfa.length} caracteres). ` +
+        `Use pelo menos ${MIN_CARACTERES}: openssl rand -base64 48`,
+    )
+  }
+
+  /**
+   * ⚠️ Trocar `MFA_CHAVE` num sistema em operação **tranca todo mundo fora do
+   * segundo fator**: os valores gravados não decifram com a chave nova. O caminho de
+   * troca está escrito em `lib/auth/mfaSegredo.ts` (versão `v2` no formato), e o
+   * caminho de emergência é reiniciar o MFA dos usuários — que apaga o segredo, nunca
+   * o mostra.
+   */
 
   const whatsapp = process.env.WHATSAPP_APP_SECRET
   if (whatsapp === SEGREDO_WHATSAPP_DEV) {

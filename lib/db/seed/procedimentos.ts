@@ -1,4 +1,4 @@
-import type { Db } from '@/lib/db'
+import type { Executor } from '@/lib/tenant/executar'
 import { procedimento } from '@/lib/db/schema'
 import { sql } from 'drizzle-orm'
 
@@ -109,7 +109,7 @@ const CATALOGO: readonly SeedProcedimento[] = [
 ]
 
 /** Idempotente: atualiza nome, valor e flags se o código já existir. */
-export async function seedProcedimentos(db: Db): Promise<number> {
+export async function seedProcedimentos(db: Executor): Promise<number> {
   await db
     .insert(procedimento)
     .values(
@@ -126,7 +126,12 @@ export async function seedProcedimentos(db: Db): Promise<number> {
       })),
     )
     .onConflictDoUpdate({
-      target: procedimento.codigo,
+      // O alvo acompanhou o índice: `procedimento_codigo_unique` (global) virou
+      // `procedimento_codigo_por_clinica_uk` na 0022. Só `codigo` faz o Postgres
+      // recusar com "no unique or exclusion constraint matching the ON CONFLICT
+      // specification" — e o catálogo semente é o mesmo molde em toda clínica,
+      // então é o caminho normal do onboarding que quebraria, não um caso de borda.
+      target: [procedimento.clinicaId, procedimento.codigo],
       set: {
         nome: sql`excluded.nome`,
         codigoTuss: sql`excluded.codigo_tuss`,

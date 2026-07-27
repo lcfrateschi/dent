@@ -1,7 +1,12 @@
 # Sistema para Consultório Odontológico — Roadmap
 
-> Decisões da Fase 0 (2026-07-26): **single-tenant** (uma clínica), **particular + convênio**,
-> perfis **dentista / recepção / financeiro / portal do paciente**, **WhatsApp obrigatório no MVP**.
+> Decisões da Fase 0 (2026-07-26): **particular + convênio**, perfis
+> **dentista / recepção / financeiro / portal do paciente**, **WhatsApp obrigatório no MVP**.
+>
+> ⚠️ A Fase 0 também decidiu **single-tenant** (uma clínica). **Isso mudou na Fase 17**, quando o
+> Facilident passou a ser produto para várias clínicas: hoje é multi-tenant com Row Level
+> Security. O registro fica porque explica por que as Fases 1–16 foram escritas como foram — e
+> por que a 17 existiu.
 
 ## Ordem macro
 
@@ -36,9 +41,14 @@ Nunca "todo o backend primeiro".
 | ORM | Drizzle |
 | UI | Tailwind + shadcn/ui, customizado pelo design system |
 | Auth | Auth.js — **dois realms separados**: staff e paciente |
-| Arquivos | S3/R2, sempre com URL assinada e expiração curta |
+| Arquivos | Disco (padrão) ou S3/R2 em bucket privado, **servidos pela aplicação** |
 | Validação | Zod, compartilhado entre server action e formulário |
 | WhatsApp | Meta Cloud API (oficial) |
+
+A linha de arquivos mudou em relação ao plano original, e o motivo está no `CLAUDE.md`: **URL
+assinada é encaminhável**. Quem recebe o link vê a radiografia sem sessão e sem deixar rastro no
+`audit_log` — e leitura de prontuário é evento auditável na LGPD. Os bytes passam pela rota
+`/api/documentos/[id]`, que autoriza e audita cada acesso. A troca é banda por exigência legal.
 
 Estrutura de rotas — a separação entre staff e portal é de segurança, não de organização:
 
@@ -158,7 +168,24 @@ Depois de pronto, cada módulo seguinte é repetição de um padrão já provado
 | 14 | Estoque | 1 | ✅ pronta. FEFO, validade no fuso da clínica, saldo derivado por trigger, livro append-only, ficha técnica, rastreabilidade de lote → paciente. `npm run estoque:demo` e `npm run estoque:telas` |
 | 15 | Cadastros administrativos | 2 | ✅ pronta. Usuários com senha temporária e reset de MFA, ajustes da clínica, cadeiras, operadoras + tabela negociada com vigência, carteirinha, materiais e fichas técnicas. `npm run admin:verificar` |
 | 16 | Operação | 1 | ✅ pronta. Baixa de estoque proposta na execução (idempotente), backup de banco + anexos com restauração testada, serviço de despacho do WhatsApp |
-| | **Produto completo** | **~27** | |
+| | **Produto completo (uma clínica)** | **~27** | |
+| 17 | **Fundação multi-tenant** | 2 | ✅ pronta. `clinica` é o tenant (PK uuid); `clinica_id` nas 39 tabelas com `DEFAULT app_clinica_id()`; **RLS com `FORCE` nas 41 tabelas** e role de aplicação sem `BYPASSRLS` nem posse; 81 FKs compostos; numeração por clínica; onboarding, assinatura e exportação/restauração por clínica. Provado por `tenant:seguranca` (HTTP, com contraprova que desliga a política), `rls:verificar` (25) e 224 invariantes |
+| 18 | Filas de relacionamento | 2 | ✅ pronta. Cinco geradores idempotentes no laço do despachante (orçamento sem resposta, inadimplência, aprovado e não executado, faltou sem remarcar, retorno programado), `regra_retorno` como motor do recall, opt-out por paciente que silencia TODAS as filas, log de contatos como única verdade das tentativas, conversão de orçamento e recuperação por fila. `npm run relacionamento:demo` e `relacionamento:telas` |
+| 19 | Autoatendimento do paciente | 2,5 | ✅ pronta. Agendamento online reusando `horariosLivres` (a mesma grade da recepção, que só devolve horário livre), regra por clínica **desligada por padrão**, anamnese autodeclarada com conferência do dentista, ⚖️ assinatura eletrônica simples com nível gravado na linha, lista de espera. 263 invariantes, 36 verificações de IDOR, `autoatendimento:demo` |
+| 20 | Fechamento financeiro | 3 | ✅ despesas, contas a pagar e fluxo de caixa completo (o caixa somava só entradas — mentia por omissão); competência × caixa em tabelas separadas, com invariante que reprova se derem o mesmo número; MDR com vigência e EXCLUDE constraint; recorrente materializada por índice idempotente; Pix com provedor **simulado** por padrão, assinatura conferida e conciliação por `txid` idempotente. **NFS-e fora, com motivo escrito**; o PSP real nunca executou |
+| 21 | Profundidade clínica | 3 | ✅ pronta. Periograma de 6 sítios com **NIC como coluna gerada** (derivado, não digitável) e comparação **emparelhada** — dente extraído aparece como perda, não como melhora; furca só em multirradicular; ordem de laboratório que não gera despesa (o laboratório fatura por mês); propostas alternativas sem afrouxar `plano_um_ativo_por_paciente`; ciclo de esterilização com certificação gerada a partir do indicador biológico. 39 invariantes novas · `npm run periograma:demo` (24 asserções). ⚠️ **Nada validado por dentista** — lista de ⚠️ no `GLOSSARIO.md` |
+
+### Por que a Fase 17 vem antes das quatro seguintes
+
+O Facilident vai ser produto para várias clínicas, e era single-tenant por decisão explícita.
+Construir relacionamento, autoatendimento e financeiro antes de trocar isso significa **fazer
+duas vezes** — e migrar depois, com dado real de cliente dentro, é a pior hora possível.
+
+O que decidiu a ordem: dez leituras `.from(clinica).limit(1)` **sem filtro nenhum** já existiam
+no código. Em multi-tenant elas devolvem "alguma clínica", sem erro e sem log — uma delas põe o
+**cabeçalho de outra clínica no atestado do paciente**, outra faz o fuso da clínica nº 1 decidir
+o vencimento de material de todas. Nenhuma dessas falhas aparece como erro; aparecem como dado
+plausível e errado.
 
 ### Por que convênio na Fase 13, mesmo sendo essencial
 

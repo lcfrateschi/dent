@@ -4,6 +4,9 @@ import { db, pool } from '@/lib/db'
 import { loteMaterial, material, movimentoEstoque, usuario } from '@/lib/db/schema'
 import { addDias } from '@/lib/domain/datas'
 import { hojeDaClinica } from '@/lib/orcamento/consultas'
+import { desligarTriggersDeAplicacao, religarTriggersDeAplicacao } from '@/lib/demo/triggers'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
+import { idDaPrimeiraClinica } from '@/lib/demo/clinicaDaDemo'
 
 /**
  * Verificação das TELAS de estoque, por HTTP e com sessão de verdade.
@@ -205,12 +208,19 @@ async function limpar(usuarioId: string, materialId: string): Promise<void> {
   const c = await pool.connect()
   try {
     await c.query('begin')
-    await c.query("set local session_replication_role = 'replica'")
+    // Desliga só as triggers de APLICAÇÃO — as de FK ficam de pé. O
+    // `session_replication_role` que estava aqui desligava as duas, e já deixou
+    // 5 linhas órfãs em movimento_estoque, o que derrubou a 0023. Ver
+    // lib/demo/triggers.ts.
+    const tabelasDesligadas = await desligarTriggersDeAplicacao(c)
     await c.query('delete from movimento_estoque where material_id = $1', [materialId])
     await c.query('delete from lote_material where material_id = $1', [materialId])
     await c.query('delete from material where id = $1', [materialId])
     await c.query('delete from audit_log where ator_id = $1', [usuarioId])
     await c.query('delete from usuario where id = $1', [usuarioId])
+    // ANTES do commit: `disable trigger` é DDL — comitar desligado deixaria o
+    // prontuário editável para sempre, em silêncio.
+    await religarTriggersDeAplicacao(c, tabelasDesligadas)
     await c.query('commit')
     console.log('\nDados da verificação removidos.')
   } catch (e) {
@@ -221,7 +231,21 @@ async function limpar(usuarioId: string, materialId: string): Promise<void> {
   }
 }
 
-main()
+/**
+ * O contexto de clínica é aberto AQUI, envolvendo o `main()` inteiro.
+ *
+ * Script de linha de comando não tem sessão de onde herdar o tenant, e desde a
+ * `drizzle/0022` toda escrita depende de `app.clinica_id` — `app_clinica_id()`
+ * estoura sem ele, de propósito, para "esqueci o contexto" não virar linha gravada
+ * na clínica errada.
+ *
+ * Envolver no ponto de entrada, e não dentro de `main()`, é de propósito: qualquer
+ * função que `main()` chame, hoje ou amanhã, herda o contexto pelo
+ * `AsyncLocalStorage`. Espalhar `comContextoDeClinica` por dentro deixaria brecha
+ * na próxima função acrescentada.
+ */
+idDaPrimeiraClinica()
+  .then((clinicaId) => comContextoDeClinica(clinicaId, main))
   .then(async () => {
     await pool.end()
     console.log(falhas === 0 ? '\n\x1b[32mTelas conferidas.\x1b[0m' : `\n\x1b[31m${falhas} falha(s).\x1b[0m`)

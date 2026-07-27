@@ -52,7 +52,7 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **Confirmado** | Paciente respondeu que vem. Registra por qual canal (WhatsApp, telefone, portal). |
 | **Compareceu** ⚠️ | Distinto de *confirmado*. Confirmou = disse que vem. Compareceu = chegou. Modelado como `em_atendimento`/`concluido`. |
 | **Faltou (no-show)** | Não compareceu e não avisou. Métrica que o WhatsApp da Fase 9 existe para reduzir. |
-| **Encaixe** ⚠️ | Agendamento inserido fora da grade padrão, geralmente urgência. É uma `origem`, não um status. |
+| **Encaixe** ⚠️ | Agendamento inserido fora da grade padrão, geralmente urgência. É uma `origem`, não um status. **A Fase 19 NÃO fixou esta semântica**: a tabela `lista_espera` é o mecanismo de "quem quer ser chamado se vagar", e de propósito nada nela grava `origem = 'encaixe'`. Quando a recepção oferecer um horário da lista, a origem do agendamento resultante é decisão dela. Falta confirmar com o dentista: encaixe é só urgência, ou também o aproveitamento de uma desmarcação? |
 
 ## WhatsApp
 
@@ -177,6 +177,62 @@ A linguagem aqui é a linguagem do código. Se a clínica chama de "evolução",
 | **Vigência de preço** | Período em que um valor negociado vale. Reajuste é vigência **nova**, e a anterior fecha no dia anterior — dois preços válidos no mesmo dia tornariam indefinido o valor a faturar. |
 | **Carteirinha** | Vínculo do paciente com uma operadora (`paciente_convenio`). Uma ativa por operadora. A **data de adesão** é a base da contagem de carência. |
 | **Pendência de configuração** | O que falta para um documento sair correto: sem CNPJ o orçamento sai sem cabeçalho fiscal, sem CRO o atestado não tem valor legal. A tela de ajustes abre por essa lista. |
+
+## Periodontia e profundidade clínica (Fase 21)
+
+> ⚠️ **Esta seção inteira precisa de validação.** Quem a modelou não é dentista. Os
+> termos marcados **[PADRÃO]** são protocolo internacional verificável em fonte; os
+> marcados **⚠️ [ESCOLHA]** são decisão de modelagem, e cada um diz o que foi escolhido
+> e por quê. Campo errado num exame clínico não é bug de software: é diagnóstico que
+> não se sustenta.
+
+| Termo | Definição |
+|---|---|
+| **Periograma** [PADRÃO] | Exame periodontal completo: 6 sítios por dente, com profundidade de sondagem, margem gengival, sangramento e supuração; mais mobilidade e furca por dente. São ~192 medidas numa boca completa. |
+| **Sítio** [PADRÃO] | Um dos seis pontos de sondagem de um dente: mésio-vestibular, vestibular, disto-vestibular e os três correspondentes do lado oral. **O lado oral é palatina no superior e lingual no inferior** — mesma regra das faces do odontograma. O enum tem nove valores e um CHECK por arcada: "palatina no 36" é impossível de gravar. |
+| **PS — profundidade de sondagem** [PADRÃO] | Da margem gengival ao fundo da bolsa, em mm. |
+| **Recessão / margem gengival** [PADRÃO] | Da junção cemento-esmalte à margem gengival. **Positivo = recessão** (raiz exposta); **negativo = aumento gengival** (a margem cobre a coroa). O sinal negativo é o que impede superestimar o NIC de quem tem hiperplasia. |
+| **NIC — nível de inserção clínica** [PADRÃO] | `PS + recessão`. **É DERIVADO — coluna `GENERATED ALWAYS` no banco, que recusa escrita.** É o número que diz se a doença progrediu: a bolsa pode encolher só porque a gengiva retraiu (PS 6→3 com recessão 0→3 é NIC constante em 6). Mesmo princípio de "glosa é calculada, nunca digitada". |
+| **Mobilidade (Miller)** [PADRÃO] | 0 a III por dente. `0` = sem mobilidade detectável. |
+| **Furca (Glickman)** [PADRÃO] | I a IV, com `0` = examinada sem envolvimento. **Só existe em dente multirradicular.** |
+| **Comparação emparelhada** ⚠️ [ESCOLHA] | Comparar dois exames **só nos sítios presentes nos dois**. Dente extraído no intervalo desaparece com seus sítios — que são os piores, porque foi por isso que ele saiu — e a comparação ingênua mostra melhora espetacular no paciente que perdeu o dente. A perda dentária é reportada à parte, como o desfecho grave que é. |
+| **Ordem de laboratório** | A peça sai, o laboratório trabalha, a peça volta. Pende de `item_plano` (a prótese é linha do plano, não cadastro solto) e **não gera despesa automática**: o laboratório fatura por mês, e uma despesa por peça não casaria com a nota. `custo` é o valor combinado; a despesa é a nota. |
+| **Refação** | Ordem **nova** apontando para a anterior (`refaz_id`), com motivo obrigatório — não é uma situação. "Quem paga a refação" é pergunta que precisa das duas linhas. |
+| **Ciclo / carga** | Uma leva de instrumental na autoclave, com número que **reinicia a cada dia** e vai na etiqueta do pacote. Por isso o dia civil é coluna gravada, não derivada de `iniciado_em`: uma carga das 21h em São Paulo é "amanhã" em UTC. |
+| **Indicador químico** [PADRÃO] | Fita que muda de cor e sai junto com a carga. |
+| **Indicador biológico** [PADRÃO] | Esporos que precisam de incubação — **o resultado sai dias depois**. Por isso o ciclo nasce `pendente` e é atualizado, e `certificado` é coluna gerada: pendente não certifica, positivo não certifica. |
+| **Proposta alternativa** | Vários planos no mesmo `grupo_proposta`, mutuamente exclusivos (implante × prótese fixa). Vivem em `rascunho`; no máximo um chega a `ativo`. **Qual o paciente escolheu já está no orçamento**, que é o documento congelado — não é duplicado aqui. |
+
+### ⚠️ O que precisa do dentista, item por item
+
+1. **Furca no primeiro pré-molar superior (14 e 24).** Ele tem duas raízes na maioria
+   das pessoas, e está **fora** de `dente_multirradicular()`. A escolha é conservadora:
+   deixar de fora perde informação e o dentista percebe (o campo não aparece); deixar
+   dentro permitiria registrar furca em dente de raiz única, e ninguém perceberia.
+   Entre perder e inventar, o projeto perde. **Confirmar** — é uma linha na função.
+2. **Exclusão da dentição decídua.** O periograma só aceita 11–48. Motivo: mobilidade
+   de Miller num decíduo pré-esfoliação mede o oposto de doença. **Confirmar** se a
+   clínica registra periodonto em criança.
+3. **Faixas numéricas.** PS de 0 a 15 mm (o limite é do instrumento: a sonda UNC-15
+   marca até 15). Recessão de −10 a +20. **Confirmar** se recusam algum achado real.
+4. **Índice de placa não foi modelado.** É comum no periograma (O'Leary) e ficou fora
+   por não ter sido pedido — acrescentar é uma coluna. **Confirmar** se a clínica o
+   registra.
+5. **Limiares de bolsa** em 4 mm e 6 mm para as contagens. São os usuais; **confirmar**.
+
+### ⚠️ Esterilização: o que a RDC 15 pede além disto
+
+O registro cobre equipamento, responsável, data, parâmetros do ciclo e os dois
+indicadores. **Não** cobre: qualificação térmica do equipamento, periodicidade do
+teste biológico, POP escrito, registro da limpeza prévia do instrumental, e
+**rastreabilidade do pacote até o paciente** — que exigiria uma entidade que não
+existe aqui (o pacote, com etiqueta, ligado ao ciclo na embalagem e à execução na
+abertura). `conteudo` é texto livre, que é o que se faz no papel, e **texto livre não
+é rastreabilidade**: se um biológico voltar positivo, o sistema diz o ciclo e o dia,
+não a lista de pacientes.
+
+Dizer "conformidade com a RDC 15" seria o mesmo erro de dizer que o XML TISS está
+aceito pela operadora porque é válido contra o XSD.
 
 ## LGPD
 

@@ -263,6 +263,20 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               </Button>
             </Link>
           ) : null}
+          {/*
+            Periograma junto do odontograma: são os dois mapas da boca, e quem procura
+            um procura o outro. O ícone é o do odontograma de propósito — o mapa de
+            ícones é fechado (`components/ui/Icone.tsx`) e inventar chave nova ali é
+            mudança em arquivo compartilhado.
+          */}
+          {pode(ator.perfil, 'odontograma', 'ler') ? (
+            <Link href={`/periograma/${p.id}`}>
+              <Button>
+                <Icone nome="odontograma" />
+                Periograma
+              </Button>
+            </Link>
+          ) : null}
           {pode(ator.perfil, 'documento', 'ler') ? (
             <Link href={`/pacientes/${p.id}/documentos`}>
               <Button>

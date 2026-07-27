@@ -1,6 +1,6 @@
-import type { Db } from '@/lib/db'
+import type { Executor } from '@/lib/tenant/executar'
 import { insumoProcedimento, material, procedimento } from '@/lib/db/schema'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 /**
  * Catálogo inicial de materiais e a ficha técnica dos procedimentos.
@@ -645,12 +645,13 @@ export interface ResultadoSeedMateriais {
   readonly procedimentosAusentes: readonly string[]
 }
 
-export async function seedMateriais(db: Db): Promise<ResultadoSeedMateriais> {
+export async function seedMateriais(db: Executor): Promise<ResultadoSeedMateriais> {
   await db
     .insert(material)
     .values([...CATALOGO])
     .onConflictDoUpdate({
-      target: material.codigo,
+      // Mesmo motivo de `procedimentos.ts`: o único virou (clinica_id, codigo).
+      target: [material.clinicaId, material.codigo],
       set: {
         nome: sql`excluded.nome`,
         categoria: sql`excluded.categoria`,
@@ -666,16 +667,39 @@ export async function seedMateriais(db: Db): Promise<ResultadoSeedMateriais> {
       },
     })
 
+  /**
+   * Os dois `where` abaixo não são zelo: sem eles o seed grava ficha técnica
+   * cruzando clínica **a partir da segunda**.
+   *
+   * `material.codigo` e `procedimento.codigo` eram únicos no mundo e viraram únicos
+   * **por clínica** na `drizzle/0022`. Um `select` sem filtro passou a trazer o
+   * catálogo de todas, e um `Map` indexado por código guarda a última que aparecer —
+   * silenciosamente a de outra clínica. O `insumo_procedimento` resultante liga
+   * material desta a procedimento daquela, e é o FK composto da `0023` que recusa,
+   * com uma mensagem que não fala de tenant.
+   *
+   * Estava mascarado porque o seed só era chamado para "a primeira" clínica.
+   *
+   * O filtro é `app_clinica_id()`, do banco, e não um parâmetro: **não há o que o
+   * chamador erre**, e sem contexto a função estoura em vez de devolver o catálogo
+   * inteiro. É a mesma escolha das onze leituras que a Fase 17 corrigiu.
+   */
+  const daClinica = sql`app_clinica_id()`
   const materiaisPorCodigo = new Map(
-    (await db.select({ id: material.id, codigo: material.codigo }).from(material)).map((m) => [
-      m.codigo,
-      m.id,
-    ]),
+    (
+      await db
+        .select({ id: material.id, codigo: material.codigo })
+        .from(material)
+        .where(eq(material.clinicaId, daClinica))
+    ).map((m) => [m.codigo, m.id]),
   )
   const procedimentosPorCodigo = new Map(
-    (await db.select({ id: procedimento.id, codigo: procedimento.codigo }).from(procedimento)).map(
-      (p) => [p.codigo, p.id],
-    ),
+    (
+      await db
+        .select({ id: procedimento.id, codigo: procedimento.codigo })
+        .from(procedimento)
+        .where(eq(procedimento.clinicaId, daClinica))
+    ).map((p) => [p.codigo, p.id]),
   )
 
   const linhas: { procedimentoId: string; materialId: string; quantidade: string }[] = []

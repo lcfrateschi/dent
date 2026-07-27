@@ -13,6 +13,7 @@ import {
   relatorioDeAgenda,
 } from '@/lib/relatorios/consultas'
 import type { NextRequest } from 'next/server'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
 
 /**
  * Exportação de relatório em CSV.
@@ -53,6 +54,14 @@ export async function GET(
 ): Promise<Response> {
   const ator = await atorAtual()
   if (!ator) return new Response('Unauthorized', { status: 401 })
+  /**
+   * Envelope explícito de tenant — route handler não tem o store por requisição
+   * do React, e o `enterWith` de `atorAtual()` não sobrevive ao `await` de volta
+   * para cá. Sem isto, 500 com "sem contexto de clínica" numa rota que autenticou
+   * certo — e num teste adversarial um 500 **se confunde com isolamento**.
+   * Ver `lib/tenant/armazem.ts` para a medição.
+   */
+  return await comContextoDeClinica(ator.clinicaId, async () => {
 
   const { tipo: tipoBruto } = await params
   if (!(tipoBruto in PERMISSAO)) return new Response('Not found', { status: 404 })
@@ -99,6 +108,7 @@ export async function GET(
       'cache-control': 'private, no-store, max-age=0',
       'x-content-type-options': 'nosniff',
     },
+  })
   })
 }
 

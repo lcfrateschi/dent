@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { MFA_CHAVE_DEV } from './mfaSegredo'
 import { mfaDesabilitado } from './mfa'
 import { exigirSegredoDeProducao } from './segredo'
 
@@ -19,6 +20,16 @@ function ambiente(vars: Record<string, string | undefined>): void {
   process.env = { ...original, ...vars } as NodeJS.ProcessEnv
 }
 
+/**
+ * Chave de cifra válida, para os casos que querem chegar às OUTRAS checagens.
+ *
+ * Quando `MFA_CHAVE` entrou na função, cinco casos deste arquivo passaram a falhar —
+ * eles ambientavam produção sem ela e batiam na checagem nova antes de alcançar o que
+ * queriam provar. Foi bom sinal: se a checagem tivesse sido posta no FIM, os cinco
+ * continuariam verdes e não haveria como saber se ela era exercitada.
+ */
+const CHAVE_MFA_OK = 'M'.repeat(64)
+
 describe('exigirSegredoDeProducao', () => {
   it('não interfere fora de produção', () => {
     ambiente({
@@ -34,6 +45,7 @@ describe('exigirSegredoDeProducao', () => {
       NEXT_PHASE: undefined,
       AUTH_SECRET: 'dev-secret-trocar-em-producao-0123456789abcdef',
       WHATSAPP_APP_SECRET: 'segredo-real-da-meta',
+      MFA_CHAVE: CHAVE_MFA_OK,
     })
     expect(() => exigirSegredoDeProducao()).toThrow(/AUTH_SECRET está com o valor de desenvolvimento/)
   })
@@ -46,16 +58,27 @@ describe('exigirSegredoDeProducao', () => {
       NEXT_PHASE: undefined,
       AUTH_SECRET: 'x'.repeat(48),
       WHATSAPP_APP_SECRET: 'dev-whatsapp-app-secret-trocar-em-producao',
+      MFA_CHAVE: CHAVE_MFA_OK,
     })
     expect(() => exigirSegredoDeProducao()).toThrow(/WHATSAPP_APP_SECRET/)
   })
 
   it('barra AUTH_SECRET ausente ou curta', () => {
-    ambiente({ NODE_ENV: 'production', NEXT_PHASE: undefined, AUTH_SECRET: undefined })
-    expect(() => exigirSegredoDeProducao()).toThrow(/não definida/)
+    ambiente({
+      NODE_ENV: 'production',
+      NEXT_PHASE: undefined,
+      AUTH_SECRET: undefined,
+      MFA_CHAVE: CHAVE_MFA_OK,
+    })
+    expect(() => exigirSegredoDeProducao()).toThrow(/AUTH_SECRET não definida/)
 
-    ambiente({ NODE_ENV: 'production', NEXT_PHASE: undefined, AUTH_SECRET: 'curta' })
-    expect(() => exigirSegredoDeProducao()).toThrow(/curta demais/)
+    ambiente({
+      NODE_ENV: 'production',
+      NEXT_PHASE: undefined,
+      AUTH_SECRET: 'curta',
+      MFA_CHAVE: CHAVE_MFA_OK,
+    })
+    expect(() => exigirSegredoDeProducao()).toThrow(/AUTH_SECRET curta demais/)
   })
 
   it('aceita segredo próprio e longo', () => {
@@ -64,6 +87,7 @@ describe('exigirSegredoDeProducao', () => {
       NEXT_PHASE: undefined,
       AUTH_SECRET: 'K'.repeat(64),
       WHATSAPP_APP_SECRET: 'segredo-real-da-meta',
+      MFA_CHAVE: CHAVE_MFA_OK,
     })
     expect(() => exigirSegredoDeProducao()).not.toThrow()
   })
@@ -89,6 +113,7 @@ describe('exigirSegredoDeProducao', () => {
       NEXT_PHASE: 'phase-production-server',
       AUTH_SECRET: 'dev-secret-trocar-em-producao-0123456789abcdef',
       WHATSAPP_APP_SECRET: 'segredo-real-da-meta',
+      MFA_CHAVE: CHAVE_MFA_OK,
     })
     expect(() => exigirSegredoDeProducao()).toThrow(/AUTH_SECRET/)
   })
@@ -105,6 +130,63 @@ describe('exigirSegredoDeProducao', () => {
       MFA_DESABILITADO: 'true',
     })
     expect(() => exigirSegredoDeProducao()).toThrow(/MFA_DESABILITADO=true não é permitido/)
+  })
+
+  it('BARRA MFA_CHAVE ausente em produção', () => {
+    // Sem chave, `cifrarSegredo()` estouraria na primeira gravação de segredo — uma
+    // falha em produção descoberta pelo usuário tentando configurar o autenticador.
+    ambiente({
+      NODE_ENV: 'production',
+      NEXT_PHASE: undefined,
+      AUTH_SECRET: 'K'.repeat(64),
+      WHATSAPP_APP_SECRET: 'segredo-real-da-meta',
+      MFA_CHAVE: undefined,
+    })
+    expect(() => exigirSegredoDeProducao()).toThrow(/MFA_CHAVE não definida/)
+  })
+
+  it('BARRA a MFA_CHAVE de desenvolvimento em produção — ela é pública', () => {
+    // Com a chave pública, um dump do banco volta a entregar o segundo fator de
+    // todos: cifrar com chave conhecida é ofuscar, não cifrar.
+    ambiente({
+      NODE_ENV: 'production',
+      NEXT_PHASE: undefined,
+      AUTH_SECRET: 'K'.repeat(64),
+      WHATSAPP_APP_SECRET: 'segredo-real-da-meta',
+      MFA_CHAVE: MFA_CHAVE_DEV,
+    })
+    expect(() => exigirSegredoDeProducao()).toThrow(/MFA_CHAVE está com o valor de desenvolvimento/)
+  })
+
+  it('BARRA MFA_CHAVE curta', () => {
+    ambiente({
+      NODE_ENV: 'production',
+      NEXT_PHASE: undefined,
+      AUTH_SECRET: 'K'.repeat(64),
+      WHATSAPP_APP_SECRET: 'segredo-real-da-meta',
+      MFA_CHAVE: 'curta',
+    })
+    expect(() => exigirSegredoDeProducao()).toThrow(/MFA_CHAVE curta demais/)
+  })
+
+  it('a MFA_CHAVE errada é relatada ANTES do AUTH_SECRET errado', () => {
+    /**
+     * Com as duas erradas, a mensagem tem de ser a do MFA. Não é preciosismo de
+     * ordem: cada `throw` mostra UM problema, e quem faz o deploy conserta o que a
+     * mensagem diz, sobe de novo e descobre o próximo. A ordem decide quantas
+     * rodadas isso leva, e as checagens do segundo fator vêm primeiro de propósito.
+     *
+     * Este caso também é a contraprova dos três acima: se a checagem de `MFA_CHAVE`
+     * estivesse no fim do arquivo, eles passariam igual e este falharia.
+     */
+    ambiente({
+      NODE_ENV: 'production',
+      NEXT_PHASE: undefined,
+      AUTH_SECRET: 'dev-secret-trocar-em-producao-0123456789abcdef',
+      WHATSAPP_APP_SECRET: 'dev-whatsapp-app-secret-trocar-em-producao',
+      MFA_CHAVE: MFA_CHAVE_DEV,
+    })
+    expect(() => exigirSegredoDeProducao()).toThrow(/MFA_CHAVE/)
   })
 
   it('e a checagem do MFA vem ANTES das outras', () => {

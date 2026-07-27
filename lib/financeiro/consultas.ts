@@ -32,6 +32,7 @@ import {
   ratearComissao,
 } from '@/lib/domain/comissao'
 import { somar, subtrair } from '@/lib/domain/dinheiro'
+import { DA_CLINICA_ATUAL } from '@/lib/tenant/sql'
 import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm'
 import { hojeDaClinica } from '@/lib/orcamento/consultas'
 
@@ -402,8 +403,14 @@ export async function inadimplencia(ator: Ator): Promise<readonly LinhaInadimple
 // ── Comissões ────────────────────────────────────────────────────────────────
 
 export async function baseDaComissao(): Promise<BaseComissao> {
-  const [linha] = await db.select({ base: clinica.baseComissao }).from(clinica).limit(1)
-  return (linha?.base ?? 'valor_recebido') as BaseComissao
+  // Sem `?? 'valor_recebido'`: a base da comissão é decisão fechada de CADA
+  // clínica, e adivinhá-la calcularia a folha de pagamento pela regra de outra.
+  const [linha] = await db
+    .select({ base: clinica.baseComissao })
+    .from(clinica)
+    .where(DA_CLINICA_ATUAL)
+  if (!linha) throw new Error('Clínica do contexto não encontrada ao ler a base da comissão.')
+  return linha.base as BaseComissao
 }
 
 /**

@@ -145,3 +145,62 @@ export function textoNaoEntendido(d: DadosLembrete): string {
 export function diaDoLembrete(inicio: Date, fuso: string = FUSO_PADRAO): string {
   return diaLocalIso(inicio, fuso)
 }
+
+// ── Retorno programado (Fase 18) ─────────────────────────────────────────────
+
+export interface DadosRecall {
+  readonly pacienteNome: string
+  readonly clinicaNome: string
+  /** Quantos meses desde o último atendimento. Número, nunca o procedimento. */
+  readonly meses: number
+}
+
+/**
+ * O convite de retorno.
+ *
+ * ── O que este texto NÃO diz, e por quê ────────────────────────────────────
+ * Não diz o procedimento, não diz o dente, não diz o diagnóstico. "Está na hora
+ * da sua reavaliação periodontal" seria mais útil para a clínica e é justamente o
+ * que não pode sair: a tela do celular do paciente é lida pelo cônjuge, pelo
+ * filho, pelo colega que está do lado. A decisão está no CLAUDE.md e vale para
+ * toda mensagem — aqui ela é mais fácil de violar, porque o motivo do retorno é
+ * clínico por natureza.
+ *
+ * O tipo de retorno (`tipo_retorno`: profilaxia, periodontal, ortodontia) existe
+ * na tabela para a clínica organizar a fila e para o relatório separar as coisas.
+ * Ele não entra na mensagem.
+ *
+ * ── Por que fala em MESES e não em data ────────────────────────────────────
+ * "Já faz 6 meses" é verdade por semanas; "sua profilaxia era em 15/07" cobra um
+ * atraso que a clínica também deixou passar. O tom decide se o paciente responde
+ * ou se sente cobrado.
+ */
+export function textoRecall(d: DadosRecall): string {
+  if (!Number.isInteger(d.meses) || d.meses < 1) {
+    erro('MESES_INVALIDO', `Intervalo inválido para o convite de retorno: ${d.meses}.`)
+  }
+  const tempo = d.meses === 1 ? '1 mês' : `${d.meses} meses`
+  return [
+    `Olá, ${primeiroNome(d.pacienteNome)}! Já faz ${tempo} desde seu último atendimento na ${d.clinicaNome.trim()}.`,
+    '',
+    'Quer marcar seu retorno? Responda esta mensagem e a gente encontra um horário.',
+  ].join('\n')
+}
+
+/**
+ * Parâmetros do template de retorno.
+ *
+ * ⚠️ **O template NÃO EXISTE na Meta ainda.** Só `lembrete_consulta_pt_br` está
+ * aprovado. Este nome é a proposta de cadastro, e enquanto ele não for aprovado a
+ * fila de retorno funciona por **telefone, com o contato registrado à mão** — que
+ * já é o ganho principal, porque hoje ninguém liga.
+ *
+ * Deixar o nome aqui não "habilita" nada: `provedor/meta.ts` recebe o nome do
+ * template e a Meta recusa o que não está aprovado. O que seria errado é inventar
+ * que está pronto.
+ */
+export const TEMPLATE_RECALL = 'retorno_programado_pt_br'
+
+export function parametrosRecall(d: DadosRecall): readonly string[] {
+  return [primeiroNome(d.pacienteNome), String(d.meses), d.clinicaNome.trim()]
+}

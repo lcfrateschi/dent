@@ -46,11 +46,28 @@ services:
       context: .
       target: dev
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-facilident}:${POSTGRES_PASSWORD:-facilident_dev}@db:5432/${POSTGRES_DB:-facilident}
+      # A role de APLICAÇÃO. Não é dona das tabelas e não tem BYPASSRLS — é o que
+      # faz a Row Level Security valer, em vez de ser decorativa. Dono de tabela
+      # ignora política, e com a credencial do dono aqui todo o isolamento da
+      # `drizzle/0023` seria enfeite: o teste adversarial passaria com o vazamento
+      # de pé.
+      #
+      # Precisa de `./docker/credencial-app.sh` uma vez (a migration cria a role
+      # sem LOGIN; senha em arquivo SQL versionado é senha pública).
+      #
+      # Migration, seed, `db:verificar` e backup continuam no DONO, de propósito:
+      # são operação, não aplicação. Quem aplica DDL e quem atende requisição não
+      # devem ser a mesma credencial.
+      DATABASE_URL: postgres://facilident_app:${APP_DB_PASSWORD:-facilident_app_dev}@db:5432/${POSTGRES_DB:-facilident}
       NODE_ENV: development
       WATCHPACK_POLLING: 'true'
       AUTH_SECRET: ${AUTH_SECRET:-dev-secret-trocar-em-producao-0123456789abcdef}
       AUTH_TRUST_HOST: 'true'
+      # Cifra o segredo do segundo fator em repouso (lib/auth/mfaSegredo.ts). Tem
+      # default de desenvolvimento pelo mesmo motivo do AUTH_SECRET: sem ele o
+      # `docker compose up` quebraria. Produção se RECUSA a subir com este valor —
+      # com a chave pública, um dump do banco entrega o MFA de todos os usuários.
+      MFA_CHAVE: ${MFA_CHAVE:-dev-mfa-key-trocar-em-producao-0123456789abcdef}
       # WhatsApp: 'simulado' é o padrão de propósito. Ver
       # lib/mensageria/provedor/index.ts — cair para o provedor real por omissão
       # mandaria mensagem de teste para telefone de paciente.
@@ -98,7 +115,19 @@ services:
       context: .
       target: prod
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-facilident}:${POSTGRES_PASSWORD:-facilident_dev}@db:5432/${POSTGRES_DB:-facilident}
+      # A role de APLICAÇÃO. Não é dona das tabelas e não tem BYPASSRLS — é o que
+      # faz a Row Level Security valer, em vez de ser decorativa. Dono de tabela
+      # ignora política, e com a credencial do dono aqui todo o isolamento da
+      # `drizzle/0023` seria enfeite: o teste adversarial passaria com o vazamento
+      # de pé.
+      #
+      # Precisa de `./docker/credencial-app.sh` uma vez (a migration cria a role
+      # sem LOGIN; senha em arquivo SQL versionado é senha pública).
+      #
+      # Migration, seed, `db:verificar` e backup continuam no DONO, de propósito:
+      # são operação, não aplicação. Quem aplica DDL e quem atende requisição não
+      # devem ser a mesma credencial.
+      DATABASE_URL: postgres://facilident_app:${APP_DB_PASSWORD:-facilident_app_dev}@db:5432/${POSTGRES_DB:-facilident}
       NODE_ENV: production
       # Sem `:?` de propósito: o compose interpola TODOS os serviços mesmo os
       # de outro profile, e um `:?` aqui quebraria `docker compose up` normal.
@@ -106,6 +135,10 @@ services:
       # a subir em produção com o segredo de desenvolvimento.
       AUTH_SECRET: ${AUTH_SECRET:-dev-secret-trocar-em-producao-0123456789abcdef}
       AUTH_TRUST_HOST: 'true'
+      # Sem default próprio de propósito: se a variável não vier do .env, o valor de
+      # desenvolvimento entra e o app se recusa a subir — que é o comportamento certo
+      # para produção. A exigência real é em runtime, em lib/auth/segredo.ts.
+      MFA_CHAVE: ${MFA_CHAVE:-dev-mfa-key-trocar-em-producao-0123456789abcdef}
       WHATSAPP_PROVEDOR: ${WHATSAPP_PROVEDOR:-simulado}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
@@ -147,7 +180,19 @@ services:
         sleep ${DESPACHO_INTERVALO_SEGUNDOS:-600};
       done'
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-facilident}:${POSTGRES_PASSWORD:-facilident_dev}@db:5432/${POSTGRES_DB:-facilident}
+      # A role de APLICAÇÃO. Não é dona das tabelas e não tem BYPASSRLS — é o que
+      # faz a Row Level Security valer, em vez de ser decorativa. Dono de tabela
+      # ignora política, e com a credencial do dono aqui todo o isolamento da
+      # `drizzle/0023` seria enfeite: o teste adversarial passaria com o vazamento
+      # de pé.
+      #
+      # Precisa de `./docker/credencial-app.sh` uma vez (a migration cria a role
+      # sem LOGIN; senha em arquivo SQL versionado é senha pública).
+      #
+      # Migration, seed, `db:verificar` e backup continuam no DONO, de propósito:
+      # são operação, não aplicação. Quem aplica DDL e quem atende requisição não
+      # devem ser a mesma credencial.
+      DATABASE_URL: postgres://facilident_app:${APP_DB_PASSWORD:-facilident_app_dev}@db:5432/${POSTGRES_DB:-facilident}
       NODE_ENV: production
       WHATSAPP_PROVEDOR: ${WHATSAPP_PROVEDOR:-simulado}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}

@@ -26,6 +26,9 @@ import {
 import { tabelaNegociada } from '@/lib/convenios/consultas'
 import { hojeDaClinica } from '@/lib/orcamento/consultas'
 import { and, eq } from 'drizzle-orm'
+import { desligarTriggersDeAplicacao, religarTriggersDeAplicacao } from '@/lib/demo/triggers'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
+import { idDaPrimeiraClinica } from '@/lib/demo/clinicaDaDemo'
 
 /**
  * Verificação dos cadastros administrativos: núcleo + telas, por HTTP.
@@ -141,10 +144,12 @@ async function main(): Promise<void> {
       mfaSecret: segredoAdmin,
       mfaAtivo: true,
     })
-    .returning({ id: usuario.id })
+    // Ver o comentário igual nos `demonstrar.ts`: o tenant do Ator é o do usuário.
+    .returning({ id: usuario.id, clinicaId: usuario.clinicaId })
 
   const ator: Ator = {
     usuarioId: uAdmin!.id,
+    clinicaId: uAdmin!.clinicaId,
     nome: `${MARCA} Administradora`,
     email: emailAdmin,
     perfil: 'admin',
@@ -165,7 +170,14 @@ async function main(): Promise<void> {
     if (!nova.ok || !nova.senhaTemporaria || !nova.id) throw new Error('usuário não criado')
     criados.usuarios.push(nova.id)
     const senhaTemporaria = nova.senhaTemporaria
-    const [rec] = await db.select({ email: usuario.email, temporaria: usuario.senhaTemporaria }).from(usuario).where(eq(usuario.id, nova.id))
+    const [rec] = await db
+      .select({
+        email: usuario.email,
+        temporaria: usuario.senhaTemporaria,
+        clinicaId: usuario.clinicaId,
+      })
+      .from(usuario)
+      .where(eq(usuario.id, nova.id))
     conferir(rec?.temporaria === true, 'a senha está marcada como temporária no banco')
 
     // ── 2. A senha temporária não vai para a auditoria ─────────────────────
@@ -240,6 +252,7 @@ async function main(): Promise<void> {
     passo(5, 'Depois de trocar, a recepcionista circula normalmente')
     const atorRec: Ator = {
       usuarioId: nova.id,
+      clinicaId: rec!.clinicaId,
       nome: 'rec',
       email: rec!.email,
       perfil: 'recepcao',
@@ -382,11 +395,23 @@ async function main(): Promise<void> {
     if (!op.ok || !op.id) throw new Error('operadora não criada')
     criados.convenios.push(op.id)
 
+    /**
+     * O filtro por clínica NÃO é decoração. `procedimento.codigo` era único no
+     * mundo e virou único **por clínica** na `drizzle/0022` — num banco com seis
+     * clínicas existem seis 'DENT-001', e sem o filtro esta consulta trazia o de
+     * outra. O `preco_convenio` resultante misturava operadora desta clínica com
+     * procedimento de outra, e o FK composto da `0023` recusava.
+     *
+     * Este script roda como DONO das tabelas (a limpeza precisa de `DISABLE
+     * TRIGGER`), e dono não tem RLS filtrando por ele. Onde a política não alcança,
+     * o filtro é explícito — não porque seja bonito, porque é o que existe.
+     */
     const [proc] = await db
       .select({ id: procedimento.id, nome: procedimento.nome })
       .from(procedimento)
-      .where(eq(procedimento.codigo, 'DENT-001'))
+      .where(and(eq(procedimento.clinicaId, ator.clinicaId), eq(procedimento.codigo, 'DENT-001')))
       .limit(1)
+    if (!proc) throw new Error('DENT-001 não existe nesta clínica — rode `npm run db:seed`.')
 
     const p1 = await salvarPrecoComAtor(ator, {
       convenioId: op.id,
@@ -463,11 +488,20 @@ async function main(): Promise<void> {
     const [cad] = await db
       .select({ id: cadeira.id })
       .from(cadeira)
-      .where(eq(cadeira.nome, `${MARCA} Cadeira`))
+      // O nome da cadeira também virou único por clínica.
+      .where(and(eq(cadeira.clinicaId, ator.clinicaId), eq(cadeira.nome, `${MARCA} Cadeira`)))
       .limit(1)
     criados.cadeiras.push(cad!.id)
 
-    const [profQualquer] = await db.select({ id: profissional.id }).from(profissional).limit(1)
+    // "Qualquer" significa qualquer DESTA clínica. Sem o filtro, o agendamento
+    // nascia com profissional de outra e o FK composto o recusava — a mensagem
+    // (`agendamento_profissional_id_profissional_id_fk`) é a trava funcionando.
+    const [profQualquer] = await db
+      .select({ id: profissional.id })
+      .from(profissional)
+      .where(eq(profissional.clinicaId, ator.clinicaId))
+      .limit(1)
+    if (!profQualquer) throw new Error('Nenhum profissional nesta clínica.')
     await db.insert(agendamento).values({
       pacienteId: pac!.id,
       profissionalId: profQualquer!.id,
@@ -522,7 +556,11 @@ async function limpar(criados: {
   const c = await pool.connect()
   try {
     await c.query('begin')
-    await c.query("set local session_replication_role = 'replica'")
+    // Desliga só as triggers de APLICAÇÃO — as de FK ficam de pé. O
+    // `session_replication_role` que estava aqui desligava as duas, e já deixou
+    // 5 linhas órfãs em movimento_estoque, o que derrubou a 0023. Ver
+    // lib/demo/triggers.ts.
+    const tabelasDesligadas = await desligarTriggersDeAplicacao(c)
     for (const id of criados.pacientes) {
       await c.query('delete from agendamento where paciente_id = $1', [id])
       await c.query('delete from paciente_convenio where paciente_id = $1', [id])
@@ -543,6 +581,9 @@ async function limpar(criados: {
       await c.query('delete from profissional where usuario_id = $1', [id])
       await c.query('delete from usuario where id = $1', [id])
     }
+    // ANTES do commit: `disable trigger` é DDL — comitar desligado deixaria o
+    // prontuário editável para sempre, em silêncio.
+    await religarTriggersDeAplicacao(c, tabelasDesligadas)
     await c.query('commit')
     console.log('\nDados da verificação removidos.')
   } catch (e) {
@@ -553,7 +594,21 @@ async function limpar(criados: {
   }
 }
 
-main()
+/**
+ * O contexto de clínica é aberto AQUI, envolvendo o `main()` inteiro.
+ *
+ * Script de linha de comando não tem sessão de onde herdar o tenant, e desde a
+ * `drizzle/0022` toda escrita depende de `app.clinica_id` — `app_clinica_id()`
+ * estoura sem ele, de propósito, para "esqueci o contexto" não virar linha gravada
+ * na clínica errada.
+ *
+ * Envolver no ponto de entrada, e não dentro de `main()`, é de propósito: qualquer
+ * função que `main()` chame, hoje ou amanhã, herda o contexto pelo
+ * `AsyncLocalStorage`. Espalhar `comContextoDeClinica` por dentro deixaria brecha
+ * na próxima função acrescentada.
+ */
+idDaPrimeiraClinica()
+  .then((clinicaId) => comContextoDeClinica(clinicaId, main))
   .then(async () => {
     await pool.end()
     console.log(

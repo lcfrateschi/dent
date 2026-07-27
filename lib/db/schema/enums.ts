@@ -75,6 +75,28 @@ export const statusAgendamentoEnum = pgEnum('status_agendamento', [
   'cancelado',
 ])
 
+/**
+ * Quem respondeu a anamnese (Fase 19).
+ *
+ * `clinica` — colhida por profissional, já filtrada pelo julgamento de quem sabe
+ * repetir a pergunta de outro jeito.
+ * `portal` — autodeclarada pelo paciente antes da consulta. **Precisa de conferência
+ * antes de valer clinicamente** (`anamnese.conferida_em`).
+ */
+export const origemAnamneseEnum = pgEnum('origem_anamnese', ['clinica', 'portal'])
+
+/**
+ * ⚖️ Nível da assinatura de um consentimento (Fase 19).
+ *
+ * Só dois valores, e nenhum deles é "qualificada" — porque este sistema não emite
+ * assinatura qualificada. Acrescentar o valor sem ICP-Brasil por trás seria gravar no
+ * banco uma afirmação jurídica falsa, e é o tipo de coisa que ninguém revisa depois.
+ */
+export const nivelAssinaturaEnum = pgEnum('nivel_assinatura', [
+  'presencial',
+  'eletronica_simples',
+])
+
 export const origemAgendamentoEnum = pgEnum('origem_agendamento', [
   'recepcao',
   'telefone',
@@ -140,6 +162,35 @@ export const statusParcelaEnum = pgEnum('status_parcela', [
  * é por profissional — não é código morto.
  */
 export const baseComissaoEnum = pgEnum('base_comissao', ['valor_executado', 'valor_recebido'])
+
+// ── Fechamento financeiro (Fase 20) ───────────────────────────────────────────
+/**
+ * Natureza da despesa. **Dois valores, de propósito.**
+ *
+ * `fixa` é o que vem todo mês independente do movimento; `variavel` acompanha o
+ * atendimento. Serve a uma pergunta concreta — "de quanto preciso por mês com zero
+ * paciente?" — que é a soma das fixas.
+ *
+ * Não é plano de contas e não deve virar um: hierarquia, código contábil e amarração
+ * fiscal são decisão de quem faz a contabilidade da clínica, e um esboço nosso viraria
+ * campo que ninguém preenche.
+ */
+export const naturezaDespesaEnum = pgEnum('natureza_despesa', ['fixa', 'variavel'])
+
+/**
+ * Situação da cobrança Pix.
+ *
+ * `expirado` é estado próprio, não uma variação de `cancelado`: QR que venceu sem
+ * pagamento é normal e não exige explicação, enquanto cancelamento é ato de alguém.
+ * Misturar os dois apagaria a diferença entre "o paciente não pagou" e "a recepção
+ * desistiu da cobrança".
+ */
+export const situacaoPixEnum = pgEnum('situacao_pix', [
+  'pendente',
+  'pago',
+  'expirado',
+  'cancelado',
+])
 
 // ── TISS / convênios (Fase 13) ────────────────────────────────────────────────
 /**
@@ -299,4 +350,132 @@ export const tipoMovimentoEstoqueEnum = pgEnum('tipo_movimento_estoque', [
   'descarte',
   'devolucao',
   'ajuste',
+])
+
+// ── Relacionamento (Fase 18) ─────────────────────────────────────────────────
+
+/**
+ * Por que a clínica precisa falar com este paciente.
+ *
+ * Cada valor corresponde a um gerador em `lib/relacionamento/geradores.ts`, e a
+ * ordem aqui é a ordem de urgência de dinheiro: orçamento parado e inadimplência
+ * são caixa que não entrou; retorno é caixa que não vai entrar.
+ */
+export const tipoTarefaRelacionamentoEnum = pgEnum('tipo_tarefa_relacionamento', [
+  'orcamento_sem_resposta',
+  'inadimplencia',
+  'aprovado_nao_executado',
+  'falta_sem_remarcar',
+  'retorno_programado',
+])
+
+/**
+ * Situação da tarefa na fila.
+ *
+ * `dispensada` **não** é o mesmo que `resolvida`, e a diferença é o ponto todo da
+ * fase: resolvida é "o paciente marcou"; dispensada é "não insista". Colapsar as
+ * duas num `fechada` faria a clínica perder a informação que impede a segunda
+ * ligação para quem pediu para não ser incomodado.
+ */
+export const situacaoTarefaEnum = pgEnum('situacao_tarefa', [
+  'aberta',
+  'em_andamento',
+  'resolvida',
+  'dispensada',
+])
+
+/** Por onde a recepção falou com o paciente. */
+export const canalContatoEnum = pgEnum('canal_contato', [
+  'telefone',
+  'whatsapp',
+  'email',
+  'presencial',
+])
+
+/**
+ * O que aconteceu na tentativa de contato.
+ *
+ * `nao_atendeu` e `nao_quer` parecem próximos e são opostos operacionais: o
+ * primeiro pede outra tentativa, o segundo **encerra** a fila para aquele
+ * paciente. Uma lista com só "sem sucesso" faria a recepção ligar de novo para
+ * quem disse não.
+ */
+export const resultadoContatoEnum = pgEnum('resultado_contato', [
+  'falou',
+  'nao_atendeu',
+  'numero_errado',
+  'remarcou',
+  'nao_quer',
+])
+
+/**
+ * Natureza do retorno programado. **Não vai na mensagem do paciente** — serve
+ * para a clínica organizar a fila e para o relatório separar profilaxia de
+ * manutenção ortodôntica. Ver `lib/domain/textoMensagem.ts`: a mensagem não
+ * carrega dado clínico.
+ */
+export const tipoRetornoEnum = pgEnum('tipo_retorno', [
+  'exame',
+  'profilaxia',
+  'periodontal',
+  'ortodontia',
+  'controle',
+])
+
+// ── Fase 21: profundidade clínica ────────────────────────────────────────────
+
+/**
+ * Os seis sítios de sondagem, com o lado oral nomeado pela arcada. [PADRÃO]
+ *
+ * Nove valores, não seis, e é de propósito: superior tem palatina, inferior tem
+ * lingual — a mesma regra das faces do odontograma. Um `mesio_oral` genérico
+ * deixaria gravar sítio que não existe naquele dente sem nada perceber; com nove
+ * valores e o CHECK por arcada da `drizzle/0037`, "palatina no 36" é impossível de
+ * gravar, não apenas errado de exibir. Ver `lib/domain/periograma.ts`.
+ */
+export const sitioPeriogramaEnum = pgEnum('sitio_periograma', [
+  'mesio_vestibular',
+  'vestibular',
+  'disto_vestibular',
+  'mesio_palatina',
+  'palatina',
+  'disto_palatina',
+  'mesio_lingual',
+  'lingual',
+  'disto_lingual',
+])
+
+/**
+ * Situação da ordem de serviço de prótese.
+ *
+ * Quatro estados, e nenhum a mais de propósito: prova, ajuste e instalação são
+ * ETAPAS do atendimento e já vivem em `execucao` — inventá-las aqui criaria uma
+ * segunda máquina de estado para o mesmo fato clínico. Refação de peça não é
+ * estado, é ordem nova apontando para a anterior (`refaz_id`), porque quem paga a
+ * refação é uma pergunta que precisa de duas linhas para ser respondida.
+ */
+export const situacaoOrdemLaboratorioEnum = pgEnum('situacao_ordem_laboratorio', [
+  'aberta',
+  'enviada',
+  'recebida',
+  'cancelada',
+])
+
+/** Indicador químico do ciclo de esterilização: sai na hora, junto com a carga. */
+export const resultadoIndicadorEnum = pgEnum('resultado_indicador', ['aprovado', 'reprovado'])
+
+/**
+ * Indicador BIOLÓGICO, que é o que certifica o ciclo — e cujo resultado sai dias
+ * depois, após incubação.
+ *
+ * `pendente` é o estado em que o ciclo NASCE, e é a razão de a certificação ser
+ * coluna gerada em vez de campo: um ciclo com biológico pendente não está
+ * certificado, e deixar isso a cargo de quem digita é como o campo de glosa
+ * digitado — divergência esperando acontecer. `negativo` = sem crescimento
+ * microbiano = esterilização eficaz.
+ */
+export const resultadoBiologicoEnum = pgEnum('resultado_biologico', [
+  'pendente',
+  'negativo',
+  'positivo',
 ])

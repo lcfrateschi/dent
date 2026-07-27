@@ -34,6 +34,20 @@ odontologia está em 82 e 85. Ver `ehFaixaOdontologica` em `lib/domain/tuss.ts`.
 `fim_vigencia`. Rebaixe o arquivo e reimporte quando a operadora avisar de código
 descontinuado, ou pelo menos uma vez por ano.
 
+## `tiss-xsd-3.05.00/` — o schema oficial do padrão TISS
+
+Sete arquivos XSD baixados de `http://www.ans.gov.br/padroes/tiss/schemas/` em
+2026-07-27, **sem edição**, com hashes em `SHA256SUMS` e a procedência detalhada em
+`tiss-xsd-3.05.00/PROCEDENCIA.md`.
+
+Servem para uma coisa só: `npm run tiss:validar` prova que o XML que o sistema gera
+é **estruturalmente válido** contra o schema da ANS. Até existirem, o `CLAUDE.md`
+dizia *"o XML TISS nunca foi validado contra o XSD"* — e quando o schema entrou,
+apareceram seis erros estruturais que nenhum parser pega.
+
+⚠️ **Não edite estes arquivos.** XSD ajustado por nós valida qualquer coisa; se o
+nosso XML não passar, o conserto é em `lib/tiss/exportar.ts`.
+
 ## `mapeamento-catalogo-tuss.csv` — o que já está ligado
 
 36 dos 49 procedimentos do catálogo têm correspondência **inequívoca** na tabela

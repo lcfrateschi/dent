@@ -1,0 +1,20 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║ Alinhamento de baseline: as sete tabelas da Fase 20 no snapshot            ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- ── Não faz nada no banco, de propósito ────────────────────────────────────
+-- As tabelas de `drizzle/0034_fechamento_financeiro.sql` foram criadas à mão junto com
+-- EXCLUDE constraint, trigger, políticas de RLS, trava de suspensão e dois FKs com
+-- `ON DELETE SET NULL (coluna)` — nada disso o `drizzle-kit` sabe gerar.
+--
+-- O gerador compara o schema TS com o **snapshot**, nunca com o banco. Sem esta
+-- entrada, `db:generate` pediria `CREATE TABLE despesa` (e as outras seis) a cada
+-- execução, e aplicar isso falharia com "already exists". Pior: numa próxima mexida em
+-- tabela vizinha, esses CREATEs viriam de carona no arquivo gerado, onde parecem
+-- arrumação.
+--
+-- Então o SQL gerado foi **descartado** e o snapshot ficou. É a sexta vez que este
+-- procedimento aparece no projeto; está documentado no `CLAUDE.md`, seção das
+-- migrations. O conteúdo aqui é um no-op explícito porque o journal exige um `.sql` por
+-- entrada.
+SELECT 1 WHERE false;

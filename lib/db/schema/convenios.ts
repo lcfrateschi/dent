@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  foreignKey,
   boolean,
   check,
   date,
@@ -15,15 +16,21 @@ import {
 } from 'drizzle-orm/pg-core'
 import { paciente } from './pacientes'
 import { procedimento } from './referencia'
+import { clinicaId } from './tenant'
 
 /**
  * Operadora de plano odontológico.
  * O módulo TISS completo é a Fase 13; estas tabelas existem desde a Fase 1 para que
  * o modelo financeiro nasça sabendo que convênio existe. Ver CLAUDE.md, decisão 4.
  */
-export const convenio = pgTable('convenio', {
+export const convenio = pgTable(
+  'convenio',
+  {
+    clinicaId: clinicaId(),
   id: uuid('id').primaryKey().defaultRandom(),
-  nome: text('nome').notNull().unique(),
+  // O nome era único global. Duas clínicas atendem a MESMA operadora, cada uma
+  // com a sua tabela negociada — a unicidade virou por clínica, no índice abaixo.
+  nome: text('nome').notNull(),
   registroAns: varchar('registro_ans', { length: 20 }),
   cnpj: varchar('cnpj', { length: 14 }),
   /** Prazo contratual de pagamento, em dias, contado do envio da guia. */
@@ -33,21 +40,20 @@ export const convenio = pgTable('convenio', {
   contatoNome: text('contato_nome'),
   contatoTelefone: varchar('contato_telefone', { length: 20 }),
   observacoes: text('observacoes'),
-  ativo: boolean('ativo').notNull().default(true),
-  criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
-})
+    ativo: boolean('ativo').notNull().default(true),
+    criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('convenio_nome_por_clinica_uk').on(t.clinicaId, t.nome)],
+)
 
 /** Tabela de preços negociada: quanto o convênio paga por cada procedimento. */
 export const precoConvenio = pgTable(
   'preco_convenio',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    convenioId: uuid('convenio_id')
-      .notNull()
-      .references(() => convenio.id, { onDelete: 'cascade' }),
-    procedimentoId: uuid('procedimento_id')
-      .notNull()
-      .references(() => procedimento.id, { onDelete: 'restrict' }),
+    convenioId: uuid('convenio_id').notNull(),
+    procedimentoId: uuid('procedimento_id').notNull(),
     /** Valor que o convênio paga à clínica. */
     valor: numeric('valor', { precision: 10, scale: 2 }).notNull(),
     /** Percentual coberto. O restante é coparticipação do paciente. */
@@ -59,6 +65,16 @@ export const precoConvenio = pgTable(
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'preco_convenio_convenio_id_convenio_id_fk',
+      columns: [t.convenioId, t.clinicaId],
+      foreignColumns: [convenio.id, convenio.clinicaId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'preco_convenio_procedimento_id_procedimento_id_fk',
+      columns: [t.procedimentoId, t.clinicaId],
+      foreignColumns: [procedimento.id, procedimento.clinicaId],
+    }).onDelete('restrict'),
     // Um preço vigente por par convênio+procedimento a cada início de vigência.
     uniqueIndex('preco_convenio_uk').on(t.convenioId, t.procedimentoId, t.vigenciaInicio),
     check('preco_convenio_valor_nao_negativo', sql`${t.valor} >= 0`),
@@ -74,13 +90,10 @@ export const precoConvenio = pgTable(
 export const pacienteConvenio = pgTable(
   'paciente_convenio',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    pacienteId: uuid('paciente_id')
-      .notNull()
-      .references(() => paciente.id, { onDelete: 'cascade' }),
-    convenioId: uuid('convenio_id')
-      .notNull()
-      .references(() => convenio.id, { onDelete: 'restrict' }),
+    pacienteId: uuid('paciente_id').notNull(),
+    convenioId: uuid('convenio_id').notNull(),
     numeroCarteirinha: varchar('numero_carteirinha', { length: 40 }).notNull(),
     plano: text('plano'),
     /** Falso quando o paciente é dependente. O titular pode não ser paciente da clínica. */
@@ -92,6 +105,16 @@ export const pacienteConvenio = pgTable(
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'paciente_convenio_convenio_id_convenio_id_fk',
+      columns: [t.convenioId, t.clinicaId],
+      foreignColumns: [convenio.id, convenio.clinicaId],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'paciente_convenio_paciente_id_paciente_id_fk',
+      columns: [t.pacienteId, t.clinicaId],
+      foreignColumns: [paciente.id, paciente.clinicaId],
+    }).onDelete('cascade'),
     uniqueIndex('paciente_convenio_carteirinha_uk').on(t.convenioId, t.numeroCarteirinha),
     // Uma carteirinha ATIVA por paciente e operadora: duas tornariam indefinido
     // qual número vai na guia. Ver drizzle/0020.

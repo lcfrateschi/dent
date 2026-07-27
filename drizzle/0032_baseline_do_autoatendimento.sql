@@ -1,0 +1,29 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║ Alinhamento de baseline: o autoatendimento no snapshot do drizzle         ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- **Não faz nada no banco.** É o mesmo procedimento das `0028` e `0030`, terceira
+-- ocorrência, e está documentado no `CLAUDE.md`.
+--
+-- A `0031` foi escrita à mão: RLS, trava de suspensão, CHECK que amarra `origem` a
+-- `conferida_em`, FK composto com `ON DELETE SET NULL (coluna)` e as asserções. O
+-- `drizzle-kit` não expressa nenhuma dessas cinco coisas, e compara o schema TS com o
+-- **snapshot**, nunca com o banco — então enquanto o snapshot não soubesse das tabelas
+-- e colunas novas, todo `db:generate` produziria `CREATE TABLE lista_espera` de novo,
+-- e aplicar isso falharia com "already exists".
+--
+-- Então o SQL gerado foi descartado e o **snapshot** ficou. O conteúdo aqui é um no-op
+-- explícito, porque o journal exige um `.sql` por entrada.
+--
+-- ── Uma divergência conhecida, e por que ela fica ──────────────────────────
+-- `anamnese_conferida_por_id_profissional_id_fk` está no banco como FK **composto**
+-- `(conferida_por_id, clinica_id)` com `ON DELETE SET NULL (conferida_por_id)` — a
+-- forma com lista de colunas do Postgres 15+, que preserva `clinica_id`. O schema TS o
+-- declara como referência de uma coluna, porque **o Drizzle não sabe expressar a lista**:
+-- declarar composto geraria `SET NULL` puro, que anularia `clinica_id` (NOT NULL) e
+-- faria o DELETE de um profissional falhar.
+--
+-- É exatamente o caso dos outros 29 FKs descritos no topo de `lib/db/schema/tenant.ts`,
+-- e a defesa é a mesma: `exigir_isolamento_estrutural()`, que derruba o deploy em vez
+-- de deixar a trava ser revertida em silêncio.
+SELECT 1 WHERE false;

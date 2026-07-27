@@ -9,6 +9,9 @@ import { LIMITE_BYTES } from '@/lib/domain/arquivo'
 import { anexarComAtor } from './anexar'
 import { comparacoesPorDente, documentosDoPaciente, documentosRemovidos } from './consultas'
 import { and, eq } from 'drizzle-orm'
+import { desligarTriggersDeAplicacao, religarTriggersDeAplicacao } from '@/lib/demo/triggers'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
+import { idDaPrimeiraClinica } from '@/lib/demo/clinicaDaDemo'
 
 /**
  * Demonstração ponta a ponta da Fase 10, contra o Postgres e o disco de verdade.
@@ -81,7 +84,11 @@ async function criarUsuario(
         mfaSecret: segredo,
         mfaAtivo: true,
       })
-      .returning({ id: usuario.id })
+      // `clinicaId` no returning: o tenant do Ator é o do USUÁRIO, lido da linha que
+      // acabou de nascer. Ler de `clinicaAtual()` compilaria igual e seria o andaime
+      // — e num banco com duas clínicas montaria um ator cuja clínica não é a do seu
+      // próprio usuário, que é precisamente o que a sessão real nunca faz.
+      .returning({ id: usuario.id, clinicaId: usuario.clinicaId })
 
     let id: string | null = null
     if (perfil === 'dentista') {
@@ -95,7 +102,7 @@ async function criarUsuario(
   })
 
   return {
-    ator: { usuarioId: u!.id, nome: `Demo ${perfil}`, email, perfil, profissionalId },
+    ator: { usuarioId: u!.id, clinicaId: u!.clinicaId, nome: `Demo ${perfil}`, email, perfil, profissionalId },
     segredo,
   }
 }
@@ -170,9 +177,19 @@ async function main(): Promise<void> {
       .from(documento)
       .where(eq(documento.id, r1.id))
 
+    /**
+     * A chave leva prefixo de clínica desde a Fase 17, e a asserção passou a cobrar
+     * as **duas** coisas de uma vez: derivada do id (nunca do nome enviado, que
+     * carrega dado pessoal e travessia de diretório) **e** dentro do tenant.
+     *
+     * Este caso estava afirmando a forma antiga e falhou quando o prefixo entrou —
+     * que é o comportamento certo de uma asserção. Vale notar o que ela protege
+     * agora: sem o prefixo, a exportação por clínica não acha o arquivo, e nada
+     * avisaria até o dia de entregar o prontuário de um cliente que está saindo.
+     */
     conferir(
-      gravado!.storageKey === `pacientes/${pacienteId}/2026/${r1.id}.jpg`,
-      `chave derivada do id, não do nome: ${gravado!.storageKey}`,
+      gravado!.storageKey === `clinicas/${dentista.ator.clinicaId}/pacientes/${pacienteId}/2026/${r1.id}.jpg`,
+      `chave derivada do id e dentro do tenant: ${gravado!.storageKey}`,
     )
     conferir(
       gravado!.sha256 === createHash('sha256').update(antes).digest('hex'),
@@ -425,7 +442,11 @@ async function limpar(pacienteId: string): Promise<void> {
     await cliente.query('begin')
     // As triggers proíbem DELETE em documento — é a garantia legal. Só a
     // demonstração as desliga, e só dentro desta transação.
-    await cliente.query("set local session_replication_role = 'replica'")
+    // Desliga só as triggers de APLICAÇÃO — as de FK ficam de pé. O
+    // `session_replication_role` que estava aqui desligava as duas, e já deixou
+    // 5 linhas órfãs em movimento_estoque, o que derrubou a 0023. Ver
+    // lib/demo/triggers.ts.
+    const tabelasDesligadas = await desligarTriggersDeAplicacao(cliente)
     await cliente.query('delete from documento where paciente_id = $1', [pacienteId])
     await cliente.query('delete from audit_log where paciente_id = $1', [pacienteId])
     await cliente.query('delete from paciente where id = $1', [pacienteId])
@@ -436,6 +457,9 @@ async function limpar(pacienteId: string): Promise<void> {
     await cliente.query('delete from usuario where email = any($1)', [
       [EMAIL_DENTISTA, EMAIL_FINANCEIRO],
     ])
+    // ANTES do commit: `disable trigger` é DDL — comitar desligado deixaria o
+    // prontuário editável para sempre, em silêncio.
+    await religarTriggersDeAplicacao(cliente, tabelasDesligadas)
     await cliente.query('commit')
     console.log('Dados da demonstração removidos.')
   } catch (e) {
@@ -446,7 +470,21 @@ async function limpar(pacienteId: string): Promise<void> {
   }
 }
 
-main()
+/**
+ * O contexto de clínica é aberto AQUI, envolvendo o `main()` inteiro.
+ *
+ * Script de linha de comando não tem sessão de onde herdar o tenant, e desde a
+ * `drizzle/0022` toda escrita depende de `app.clinica_id` — `app_clinica_id()`
+ * estoura sem ele, de propósito, para "esqueci o contexto" não virar linha gravada
+ * na clínica errada.
+ *
+ * Envolver no ponto de entrada, e não dentro de `main()`, é de propósito: qualquer
+ * função que `main()` chame, hoje ou amanhã, herda o contexto pelo
+ * `AsyncLocalStorage`. Espalhar `comContextoDeClinica` por dentro deixaria brecha
+ * na próxima função acrescentada.
+ */
+idDaPrimeiraClinica()
+  .then((clinicaId) => comContextoDeClinica(clinicaId, main))
   .then(async () => {
     await pool.end()
     process.exit(process.exitCode ?? 0)

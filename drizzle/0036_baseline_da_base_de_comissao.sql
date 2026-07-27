@@ -1,0 +1,14 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║ Alinhamento de baseline: clinica.comissao_sobre_liquido no snapshot       ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- No-op. A coluna foi criada pela `drizzle/0034_fechamento_financeiro.sql`, junto com o
+-- `COMMENT` que explica que a escolha entre bruto e líquido é **contratual, não
+-- técnica**. O que faltava era o snapshot do drizzle-kit saber dela — o schema TS a
+-- declara, e `db:generate` pedia `ADD COLUMN` a cada execução, que falharia com
+-- "column already exists".
+--
+-- Sétima vez que este procedimento aparece: gerar, conferir o que veio contra o banco,
+-- descartar o SQL e manter o snapshot. Conferido: `information_schema` mostra
+-- `comissao_sobre_liquido | false`, idêntico ao que o gerador pediria.
+SELECT 1 WHERE false;

@@ -1,0 +1,24 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║ Alinhamento de baseline: as tabelas da Fase 21 no snapshot do drizzle      ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- ── Esta migration não faz NADA no banco, e é de propósito ─────────────────
+-- As sete tabelas, os quatro tipos, a coluna `grupo_proposta` e os índices foram
+-- criados à mão na `drizzle/0037_profundidade_clinica.sql`, junto com o que o
+-- `drizzle-kit` não sabe gerar: duas colunas `GENERATED ALWAYS` (`nivel_insercao_mm`
+-- e `certificado`), a trigger do grupo de propostas, o índice único parcial, as
+-- políticas de RLS e a trava de suspensão.
+--
+-- O gerador compara o schema TS com o **snapshot**, nunca com o banco. Como o
+-- snapshot não conhecia nada disso, `db:generate` produziu um arquivo que recriava
+-- as sete tabelas — e aplicá-lo falharia com "already exists". Conferido: o SQL
+-- gerado era `CREATE TABLE`/`CREATE TYPE` de objetos que já existem, e nada além.
+--
+-- Então o SQL gerado foi descartado e o **snapshot ficou**. Este arquivo existe
+-- porque o journal exige um `.sql` por entrada; o corpo é um no-op explícito.
+--
+-- Baseline velha é dívida silenciosa: sem este passo, o `db:generate` da próxima
+-- fase traria os sete `CREATE TABLE` de carona, e quem revisasse a migration
+-- seguinte veria criação de tabela que já existe no meio de outra coisa. É a **sexta**
+-- vez que este procedimento aparece no projeto, e ele está documentado no `CLAUDE.md`.
+SELECT 1 WHERE false;

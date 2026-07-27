@@ -10,6 +10,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
+import { clinicaId } from './tenant'
 
 /**
  * Trilha de auditoria. Dado de saúde é dado sensível na LGPD: **leitura também é evento
@@ -21,6 +22,7 @@ import {
 export const auditLog = pgTable(
   'audit_log',
   {
+    clinicaId: clinicaId(),
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     /** 'staff' | 'paciente' | 'sistema' — os dois realms de autenticação mais o automático. */
     atorTipo: varchar('ator_tipo', { length: 20 }).notNull(),

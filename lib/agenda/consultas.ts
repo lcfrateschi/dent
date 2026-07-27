@@ -21,6 +21,7 @@ import {
   horariosPossiveis,
 } from '@/lib/domain/horario'
 import { STATUS_OCUPAM_AGENDA, type StatusAgendamento, conflita } from '@/lib/domain/agendamento'
+import { DA_CLINICA_ATUAL } from '@/lib/tenant/sql'
 import { type SQL, and, asc, eq, gte, lt, or, sql } from 'drizzle-orm'
 
 /**
@@ -46,12 +47,18 @@ export async function configuracaoAgenda(): Promise<ConfiguracaoAgenda> {
       passo: clinica.passoAgendaMinutos,
     })
     .from(clinica)
-    .limit(1)
+    .where(DA_CLINICA_ATUAL)
+
+  // Os defaults saíram. Eles existiam para o caso de "a linha singleton não
+  // existir", que não existe mais: a clínica é o tenant, e não há sessão sem uma.
+  // O que eles fariam agora é oferecer na grade um horário comercial inventado
+  // para uma clínica que fecha ao meio-dia — sem nenhum sinal de que algo falhou.
+  if (!linha) throw new Error('Clínica do contexto não encontrada ao montar a agenda.')
 
   return {
-    fuso: linha?.fuso ?? FUSO_PADRAO,
-    horario: (linha?.horario as HorarioFuncionamento | undefined) ?? HORARIO_PADRAO,
-    passoMin: linha?.passo ?? 15,
+    fuso: linha.fuso,
+    horario: linha.horario as HorarioFuncionamento,
+    passoMin: linha.passo,
   }
 }
 

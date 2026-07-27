@@ -6,6 +6,7 @@ import { podeDesativarCadeira, type EstadoDaCadeira } from '@/lib/domain/adminis
 import { cnpjEhValido, normalizarCnpj } from '@/lib/domain/cnpj'
 import { apenasDigitos } from '@/lib/domain/cpf'
 import { type HorarioFuncionamento, exigirHorarioValido } from '@/lib/domain/horario'
+import { clinicaAtual } from '@/lib/tenant/contexto'
 import { and, eq, gte, notInArray, sql } from 'drizzle-orm'
 
 /**
@@ -95,10 +96,15 @@ export async function salvarClinicaComAtor(
   const cep = dados.cep ? apenasDigitos(dados.cep) : ''
   if (cep && cep.length !== 8) return { ok: false, mensagem: 'CEP deve ter 8 dígitos.' }
 
+  /**
+   * Era um upsert de singleton (`id: 1`). Virou UPDATE da clínica corrente: criar
+   * clínica agora é onboarding, operação própria, não efeito colateral de salvar
+   * a configuração.
+   */
+  const id = await clinicaAtual()
   await db
-    .insert(clinica)
-    .values({
-      id: 1,
+    .update(clinica)
+    .set({
       razaoSocial,
       nomeFantasia: dados.nomeFantasia?.trim() || null,
       cnpj: cnpj || null,
@@ -115,37 +121,15 @@ export async function salvarClinicaComAtor(
       uf: dados.uf?.trim().toUpperCase() || null,
       ...(passo !== undefined ? { passoAgendaMinutos: passo } : {}),
       ...(dados.horarioFuncionamento ? { horarioFuncionamento: dados.horarioFuncionamento } : {}),
+      atualizadoEm: sql`now()`,
     })
-    .onConflictDoUpdate({
-      target: clinica.id,
-      set: {
-        razaoSocial,
-        nomeFantasia: sql`excluded.nome_fantasia`,
-        cnpj: sql`excluded.cnpj`,
-        croResponsavel: sql`excluded.cro_responsavel`,
-        ufCroResponsavel: sql`excluded.uf_cro_responsavel`,
-        telefone: sql`excluded.telefone`,
-        email: sql`excluded.email`,
-        cep: sql`excluded.cep`,
-        logradouro: sql`excluded.logradouro`,
-        numero: sql`excluded.numero`,
-        complemento: sql`excluded.complemento`,
-        bairro: sql`excluded.bairro`,
-        cidade: sql`excluded.cidade`,
-        uf: sql`excluded.uf`,
-        ...(passo !== undefined ? { passoAgendaMinutos: sql`excluded.passo_agenda_minutos` } : {}),
-        ...(dados.horarioFuncionamento
-          ? { horarioFuncionamento: sql`excluded.horario_funcionamento` }
-          : {}),
-        atualizadoEm: sql`now()`,
-      },
-    })
+    .where(eq(clinica.id, id))
 
   await registrar({
     ator,
     acao: 'atualizacao',
     entidade: 'clinica',
-    entidadeId: '1',
+    entidadeId: id,
     detalhes: { razaoSocial, temCnpj: cnpj !== '' },
   })
 
@@ -177,21 +161,18 @@ export async function salvarHorarioComAtor(
     return { ok: false, mensagem: e instanceof Error ? e.message : 'Horário inválido.' }
   }
 
-  const [existe] = await db.select({ id: clinica.id }).from(clinica).where(eq(clinica.id, 1)).limit(1)
-  if (!existe) {
-    return { ok: false, mensagem: 'Configure a identificação da clínica primeiro.' }
-  }
+  const id = await clinicaAtual()
 
   await db
     .update(clinica)
     .set({ horarioFuncionamento: horario, passoAgendaMinutos, atualizadoEm: new Date() })
-    .where(eq(clinica.id, 1))
+    .where(eq(clinica.id, id))
 
   await registrar({
     ator,
     acao: 'atualizacao',
     entidade: 'clinica',
-    entidadeId: '1',
+    entidadeId: id,
     detalhes: { horarioAlterado: true, passoAgendaMinutos },
   })
 

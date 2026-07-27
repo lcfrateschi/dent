@@ -1,0 +1,20 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║ Alinhamento de baseline: as tabelas de assinatura no snapshot do drizzle  ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- ── Esta migration não faz NADA no banco, e é de propósito ─────────────────
+-- `plano_assinatura`, `assinatura` e o enum `situacao_assinatura` foram criados à
+-- mão na `drizzle/0027_assinatura.sql`, junto com as políticas de RLS, os índices e
+-- o backfill de contrato — coisas que o `drizzle-kit` não sabe gerar.
+--
+-- O gerador compara o schema TS com o **snapshot**, nunca com o banco. Enquanto o
+-- snapshot não souber dessas tabelas, ele fica querendo criá-las: o `db:generate`
+-- produzia `CREATE TABLE assinatura` a cada vez, e aplicar isso falharia com
+-- "already exists". Pior, o mesmo efeito que já morde os FKs compostos — a próxima
+-- mexida em qualquer tabela vizinha viria com esse CREATE de carona.
+--
+-- Então o SQL gerado foi descartado e o **snapshot** ficou. Este arquivo existe
+-- porque o journal exige um `.sql` por entrada; o conteúdo é um comentário e um
+-- no-op explícito. É o mesmo procedimento da `0025`, e está documentado no
+-- `CLAUDE.md`.
+SELECT 1 WHERE false;

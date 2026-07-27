@@ -43,6 +43,48 @@ export type Recurso =
    * ações diferentes sobre a mesma tabela.
    */
   | 'estoque'
+  /**
+   * Filas de relacionamento ativo (Fase 18): orçamento sem resposta, retorno
+   * programado, falta sem remarcar, inadimplência, aprovado e não executado.
+   *
+   * **Recurso próprio, e não "agenda" nem "mensageria".** Quem trabalha a fila é a
+   * recepção, e ela precisa ver que um paciente tem parcela vencida — mas
+   * `relatorio_financeiro` continua fechado para ela: a fila diz "há parcela
+   * vencida", não quanto a clínica faturou. E o dentista não trabalha fila, então
+   * `agenda` (que ele tem) não podia carregar isto de carona.
+   *
+   * A fila **não** é recurso clínico: por construção ela não carrega procedimento
+   * nem diagnóstico — o tipo do retorno fica na tabela e não na tela do paciente,
+   * pela mesma decisão que rege `mensageria`.
+   */
+  | 'relacionamento'
+  /**
+   * Dinheiro que SAI da clínica (Fase 20): despesa, conta a pagar, fluxo de caixa,
+   * conciliação do Pix.
+   *
+   * **Recurso próprio, e não `pagamento`.** Aquele é o dinheiro do PACIENTE — a
+   * recepção o tem, porque recebe na boca do caixa. Se despesa entrasse ali de
+   * carona, quem cadastra paciente passaria a poder pagar o aluguel e estornar a
+   * conta do laboratório. São confianças diferentes sobre contas bancárias
+   * diferentes.
+   *
+   * Também não é `relatorio_financeiro`: aquele é leitura agregada, e aqui se
+   * escreve.
+   */
+  | 'despesa'
+  /**
+   * Ordem de serviço de prótese: a peça sai, o laboratório trabalha, a peça volta.
+   *
+   * Recurso próprio e não `plano_tratamento`, por um motivo operacional que só aparece
+   * ao usar: com `plano_tratamento` a **recepção tem apenas `ler`** — e é ela quem liga
+   * para o laboratório e registra que a peça chegou. Módulo que a pessoa que o opera não
+   * pode editar não é módulo, é relatório.
+   *
+   * O que ela NÃO ganha com isso: `criar` a ordem (é decisão clínica — que peça, que
+   * dente, que material) e `excluir` (refação é ordem nova apontando para a anterior,
+   * com motivo, porque "quem paga" precisa das duas linhas).
+   */
+  | 'laboratorio'
   | 'relatorio_clinico'
   | 'relatorio_financeiro'
   | 'usuario'
@@ -71,6 +113,7 @@ const MATRIZ: Matriz = {
     prontuario: ['ler', 'criar', 'assinar', 'exportar'],
     odontograma: ['ler', 'criar', 'editar'],
     plano_tratamento: ['ler', 'criar', 'editar', 'excluir'],
+    laboratorio: ['ler', 'criar', 'editar'],
     agenda: ['ler', 'criar', 'editar'],
     // Vê se o paciente confirmou; não é quem opera a fila de mensagens.
     mensageria: ['ler'],
@@ -83,6 +126,8 @@ const MATRIZ: Matriz = {
     // Dá baixa do que usou no paciente. Não compra e não ajusta contagem —
     // 'criar' é o movimento de consumo; 'editar' seria mexer no inventário.
     estoque: ['ler', 'criar'],
+    // Vê a fila do próprio paciente; trabalhar a fila é da recepção.
+    relacionamento: ['ler'],
   },
 
   // ── Recepção: agenda e cadastro. Nada de evolução clínica ────────────────
@@ -102,8 +147,12 @@ const MATRIZ: Matriz = {
     convenio: ['ler'],
     // Vê o plano para agendar a sessão certa, sem poder alterá-lo.
     plano_tratamento: ['ler'],
+    // A recepção EDITA: é ela quem recebe a peça e registra a volta.
+    laboratorio: ['ler', 'editar'],
     // Recebe o pedido do fornecedor, lança a entrada, faz a contagem mensal.
     estoque: ['ler', 'criar', 'editar'],
+    // É quem liga. `editar` cobre assumir, registrar contato, resolver e dispensar.
+    relacionamento: ['ler', 'editar'],
   },
 
   // ── Financeiro: dinheiro. Zero dado clínico ──────────────────────────────
@@ -115,13 +164,36 @@ const MATRIZ: Matriz = {
     pagamento: ['ler', 'criar', 'editar', 'excluir'],
     convenio: ['ler', 'criar', 'editar'],
     relatorio_financeiro: ['ler', 'exportar'],
+    // Dono do dinheiro que sai: lança, paga, estorna, cancela e exporta para a
+    // contabilidade. `excluir` são o cancelamento da despesa e o estorno do
+    // pagamento — as duas operações que desfazem, e as duas exigem motivo escrito.
+    despesa: ['ler', 'criar', 'editar', 'excluir', 'exportar'],
     agenda: ['ler'],
     // Confere custo e nota fiscal, e exporta o inventário para a contabilidade.
     estoque: ['ler', 'exportar'],
+    // Inadimplência é fila dele também: cobra e registra o contato.
+    relacionamento: ['ler', 'editar', 'exportar'],
   },
 
   // ── Admin: configura o sistema. NÃO é superusuário clínico ───────────────
   admin: {
+    /**
+     * ── Duas ausências deliberadas, escritas porque parecem esquecimento ──────
+     *
+     * **`plano_tratamento` e `laboratorio` não estão aqui.** O admin não lê o plano de
+     * tratamento — é decisão de RBAC do projeto, e a ordem de laboratório é derivada
+     * dele: ela nomeia o paciente, o dente e a peça. Conceder `laboratorio` ao admin
+     * seria deixar entrar pela porta de serviço o dado clínico que a porta da frente
+     * recusa.
+     *
+     * A consequência é real e assumida: o admin **não vê** o menu de Laboratório. Quem
+     * opera aquele módulo é o dentista (que decide a peça) e a recepção (que recebe).
+     *
+     * E o **financeiro** também não tem `laboratorio`, pelo mesmo motivo em espelho:
+     * ele confere a nota do laboratório contra a **despesa** (que ele tem), não contra a
+     * ordem clínica. `ordem_laboratorio.despesa_id` liga as duas sem expor dente nem
+     * paciente — "financeiro não lê dado clínico" é regra do projeto desde a Fase 3.
+     */
     usuario: '*',
     configuracao: '*',
     convenio: '*',
@@ -135,6 +207,17 @@ const MATRIZ: Matriz = {
     relatorio_financeiro: ['ler', 'exportar'],
     // Cadastra material e ficha técnica. Não dá baixa: quem consome é quem sabe.
     estoque: ['ler', 'criar', 'editar', 'excluir', 'exportar'],
+    // `criar`/`excluir` são as REGRAS de retorno (quantos meses por procedimento).
+    relacionamento: ['ler', 'criar', 'editar', 'excluir', 'exportar'],
+    /**
+     * Configura o módulo — categoria de despesa e regra recorrente — e lê tudo.
+     *
+     * **Sem `excluir`, de propósito:** cancelar despesa e estornar pagamento são
+     * operações sobre dinheiro que já se moveu, e quem responde por elas é o
+     * financeiro. Admin que pudesse estornar seria admin capaz de sumir com uma
+     * saída de caixa sem ninguém do financeiro saber.
+     */
+    despesa: ['ler', 'criar', 'editar', 'exportar'],
   },
 }
 
@@ -192,6 +275,7 @@ export const ROTULO_RECURSO: Readonly<Record<Recurso, string>> = {
   prontuario: 'Prontuário',
   odontograma: 'Odontograma',
   plano_tratamento: 'Planos de tratamento',
+  laboratorio: 'Ordens de laboratório',
   agenda: 'Agenda',
   mensageria: 'WhatsApp',
   orcamento: 'Orçamentos',
@@ -199,6 +283,8 @@ export const ROTULO_RECURSO: Readonly<Record<Recurso, string>> = {
   pagamento: 'Pagamentos',
   convenio: 'Convênios',
   estoque: 'Estoque',
+  relacionamento: 'Relacionamento',
+  despesa: 'Despesas e caixa',
   documento: 'Documentos',
   relatorio_clinico: 'Relatórios clínicos',
   relatorio_financeiro: 'Relatórios financeiros',

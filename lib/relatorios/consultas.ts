@@ -31,6 +31,7 @@ import {
 } from '@/lib/domain/indicadores'
 import { type Periodo, diaSemanaDe, diasDoPeriodo } from '@/lib/domain/periodo'
 import { addDias } from '@/lib/domain/datas'
+import { DA_CLINICA_ATUAL } from '@/lib/tenant/sql'
 import { and, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm'
 
 /**
@@ -55,8 +56,9 @@ import { and, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm'
  */
 
 async function fusoDaClinica(): Promise<string> {
-  const [c] = await db.select({ fuso: clinica.fusoHorario }).from(clinica).limit(1)
-  return c?.fuso ?? FUSO_PADRAO
+  const [c] = await db.select({ fuso: clinica.fusoHorario }).from(clinica).where(DA_CLINICA_ATUAL)
+  if (!c) throw new Error('Clínica do contexto não encontrada ao resolver o fuso do relatório.')
+  return c.fuso
 }
 
 async function configuracaoDaClinica(): Promise<{
@@ -66,11 +68,9 @@ async function configuracaoDaClinica(): Promise<{
   const [c] = await db
     .select({ fuso: clinica.fusoHorario, horario: clinica.horarioFuncionamento })
     .from(clinica)
-    .limit(1)
-  return {
-    fuso: c?.fuso ?? FUSO_PADRAO,
-    horario: (c?.horario ?? {}) as HorarioFuncionamento,
-  }
+    .where(DA_CLINICA_ATUAL)
+  if (!c) throw new Error('Clínica do contexto não encontrada ao montar o relatório.')
+  return { fuso: c.fuso, horario: c.horario as HorarioFuncionamento }
 }
 
 /** Instantes que delimitam o período no banco. `fim` é exclusivo. */

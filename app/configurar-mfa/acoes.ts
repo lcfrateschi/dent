@@ -1,10 +1,12 @@
 'use server'
 
 import { registrar } from '@/lib/auditoria/registrar'
+import { cifrarSegredo, decifrarSegredo } from '@/lib/auth/mfaSegredo'
 import { gerarSegredoTotp, uriOtpauth, verificarCodigoTotp } from '@/lib/auth/totp'
 import { exigirAtor } from '@/lib/authz/sessao'
 import { db } from '@/lib/db'
 import { clinica, usuario } from '@/lib/db/schema'
+import { DA_CLINICA_ATUAL } from '@/lib/tenant/sql'
 import { eq } from 'drizzle-orm'
 import QRCode from 'qrcode'
 
@@ -35,14 +37,33 @@ export async function prepararMfa(): Promise<DadosConfiguracaoMfa> {
     throw new Error('A verificação em duas etapas já está ativa.')
   }
 
-  // Reaproveita o segredo pendente: recarregar a página não pode invalidar o
-  // QR que a pessoa acabou de escanear.
-  const segredo = linha?.mfaSecret ?? gerarSegredoTotp()
+  /**
+   * Reaproveita o segredo pendente: recarregar a página não pode invalidar o QR que
+   * a pessoa acabou de escanear.
+   *
+   * O segredo é **gravado cifrado** desde aqui. Antes ele nascia em texto claro e só
+   * era cifrado no login seguinte — e essa janela não era um caminho quebrado (o login
+   * só recifra quando `mfa_ativo` é true, e `prepararMfa` estoura se já for), mas era
+   * um segredo TOTP em claro no banco durante o tempo em que a pessoa aponta a câmera
+   * para a tela. Não há motivo para essa janela existir.
+   *
+   * `decifrarSegredo` no reaproveitamento aceita os dois formatos, então um pendente
+   * gravado em claro antes desta mudança continua funcionando.
+   */
+  const segredo = linha?.mfaSecret
+    ? decifrarSegredo(linha.mfaSecret, ator.usuarioId).segredo
+    : gerarSegredoTotp()
   if (!linha?.mfaSecret) {
-    await db.update(usuario).set({ mfaSecret: segredo }).where(eq(usuario.id, ator.usuarioId))
+    await db
+      .update(usuario)
+      .set({ mfaSecret: cifrarSegredo(segredo, ator.usuarioId) })
+      .where(eq(usuario.id, ator.usuarioId))
   }
 
-  const [cfg] = await db.select({ nome: clinica.nomeFantasia, razao: clinica.razaoSocial }).from(clinica).limit(1)
+  const [cfg] = await db
+    .select({ nome: clinica.nomeFantasia, razao: clinica.razaoSocial })
+    .from(clinica)
+    .where(DA_CLINICA_ATUAL)
 
   const uri = uriOtpauth({
     segredoBase32: segredo,
@@ -78,7 +99,11 @@ export async function ativarMfa(codigo: string): Promise<ResultadoAtivacao> {
   }
   if (linha.mfaAtivo) return { ok: true }
 
-  if (!verificarCodigoTotp(linha.mfaSecret, codigo)) {
+  // Decifra antes de conferir. Passar o valor cifrado direto para
+  // `verificarCodigoTotp` faria TODO código ser recusado — e o sintoma seria "o
+  // autenticador não funciona", que manda a pessoa procurar no lugar errado.
+  const claro = decifrarSegredo(linha.mfaSecret, ator.usuarioId).segredo
+  if (!verificarCodigoTotp(claro, codigo)) {
     await registrar({
       ator,
       acao: 'login_falho',

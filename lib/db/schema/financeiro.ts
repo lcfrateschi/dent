@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  foreignKey,
   boolean,
   check,
   date,
@@ -17,6 +18,8 @@ import { usuario } from './acesso'
 import { formaPagamentoEnum, statusOrcamentoEnum, statusParcelaEnum } from './enums'
 import { paciente } from './pacientes'
 import { itemPlano, planoTratamento } from './tratamento'
+import { proximoNumero } from './numeracao'
+import { clinicaId } from './tenant'
 
 /**
  * Documento CONGELADO derivado do plano, com validade e valor.
@@ -26,19 +29,15 @@ import { itemPlano, planoTratamento } from './tratamento'
 export const orcamento = pgTable(
   'orcamento',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
     /**
-     * Número sequencial legível, para o paciente citar ao telefone.
-     * A sequência é criada em drizzle/0001_constraints.sql; o default é declarado
-     * aqui para o Drizzle saber que a coluna é opcional no insert.
+     * Número sequencial legível, para o paciente citar ao telefone. **Por
+     * clínica** — ver `lib/db/schema/numeracao.ts` para o porquê de não ser mais
+     * a sequence global. Único por clínica, no índice ao pé da tabela.
      */
-    numero: integer('numero')
-      .notNull()
-      .unique()
-      .default(sql`nextval('orcamento_numero_seq')`),
-    pacienteId: uuid('paciente_id')
-      .notNull()
-      .references(() => paciente.id, { onDelete: 'restrict' }),
+    numero: integer('numero').notNull().default(proximoNumero('orcamento')),
+    pacienteId: uuid('paciente_id').notNull(),
     planoId: uuid('plano_id').references(() => planoTratamento.id, { onDelete: 'set null' }),
     status: statusOrcamentoEnum('status').notNull().default('rascunho'),
     validadeAte: date('validade_ate').notNull(),
@@ -54,6 +53,12 @@ export const orcamento = pgTable(
     decididoEm: timestamp('decidido_em', { withTimezone: true }),
   },
   (t) => [
+    foreignKey({
+      name: 'orcamento_paciente_id_paciente_id_fk',
+      columns: [t.pacienteId, t.clinicaId],
+      foreignColumns: [paciente.id, paciente.clinicaId],
+    }).onDelete('restrict'),
+    uniqueIndex('orcamento_numero_por_clinica_uk').on(t.clinicaId, t.numero),
     index('orcamento_paciente_idx').on(t.pacienteId, t.criadoEm),
     index('orcamento_status_idx').on(t.status, t.validadeAte),
     check('orcamento_desconto_nao_negativo', sql`${t.desconto} >= 0`),
@@ -69,10 +74,9 @@ export const orcamento = pgTable(
 export const orcamentoItem = pgTable(
   'orcamento_item',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    orcamentoId: uuid('orcamento_id')
-      .notNull()
-      .references(() => orcamento.id, { onDelete: 'cascade' }),
+    orcamentoId: uuid('orcamento_id').notNull(),
     /** Rastreabilidade. Pode virar null sem invalidar o documento. */
     itemPlanoId: uuid('item_plano_id').references(() => itemPlano.id, { onDelete: 'set null' }),
     descricao: text('descricao').notNull(),
@@ -83,6 +87,11 @@ export const orcamentoItem = pgTable(
     ordem: smallint('ordem').notNull().default(0),
   },
   (t) => [
+    foreignKey({
+      name: 'orcamento_item_orcamento_id_orcamento_id_fk',
+      columns: [t.orcamentoId, t.clinicaId],
+      foreignColumns: [orcamento.id, orcamento.clinicaId],
+    }).onDelete('cascade'),
     index('orcamento_item_orcamento_idx').on(t.orcamentoId, t.ordem),
     check('orcamento_item_qtd_positiva', sql`${t.quantidade} > 0`),
     check('orcamento_item_valor_nao_negativo', sql`${t.valorUnitario} >= 0`),
@@ -93,10 +102,9 @@ export const orcamentoItem = pgTable(
 export const cobranca = pgTable(
   'cobranca',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    pacienteId: uuid('paciente_id')
-      .notNull()
-      .references(() => paciente.id, { onDelete: 'restrict' }),
+    pacienteId: uuid('paciente_id').notNull(),
     orcamentoId: uuid('orcamento_id').references(() => orcamento.id, { onDelete: 'set null' }),
     valorTotal: numeric('valor_total', { precision: 10, scale: 2 }).notNull(),
     forma: formaPagamentoEnum('forma').notNull(),
@@ -107,6 +115,11 @@ export const cobranca = pgTable(
     canceladoEm: timestamp('cancelado_em', { withTimezone: true }),
   },
   (t) => [
+    foreignKey({
+      name: 'cobranca_paciente_id_paciente_id_fk',
+      columns: [t.pacienteId, t.clinicaId],
+      foreignColumns: [paciente.id, paciente.clinicaId],
+    }).onDelete('restrict'),
     index('cobranca_paciente_idx').on(t.pacienteId, t.criadoEm),
     check('cobranca_valor_positivo', sql`${t.valorTotal} > 0`),
     check('cobranca_parcelas_positivas', sql`${t.qtdParcelas} >= 1`),
@@ -121,10 +134,9 @@ export const cobranca = pgTable(
 export const parcela = pgTable(
   'parcela',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    cobrancaId: uuid('cobranca_id')
-      .notNull()
-      .references(() => cobranca.id, { onDelete: 'cascade' }),
+    cobrancaId: uuid('cobranca_id').notNull(),
     numero: smallint('numero').notNull(),
     vencimento: date('vencimento').notNull(),
     valor: numeric('valor', { precision: 10, scale: 2 }).notNull(),
@@ -132,6 +144,11 @@ export const parcela = pgTable(
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'parcela_cobranca_id_cobranca_id_fk',
+      columns: [t.cobrancaId, t.clinicaId],
+      foreignColumns: [cobranca.id, cobranca.clinicaId],
+    }).onDelete('cascade'),
     uniqueIndex('parcela_cobranca_numero_uk').on(t.cobrancaId, t.numero),
     index('parcela_vencimento_idx').on(t.vencimento, t.status),
     check('parcela_numero_positivo', sql`${t.numero} >= 1`),
@@ -143,10 +160,9 @@ export const parcela = pgTable(
 export const pagamento = pgTable(
   'pagamento',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    parcelaId: uuid('parcela_id')
-      .notNull()
-      .references(() => parcela.id, { onDelete: 'restrict' }),
+    parcelaId: uuid('parcela_id').notNull(),
     valor: numeric('valor', { precision: 10, scale: 2 }).notNull(),
     pagoEm: date('pago_em').notNull(),
     meio: formaPagamentoEnum('meio').notNull(),
@@ -163,6 +179,11 @@ export const pagamento = pgTable(
     motivoEstorno: text('motivo_estorno'),
   },
   (t) => [
+    foreignKey({
+      name: 'pagamento_parcela_id_parcela_id_fk',
+      columns: [t.parcelaId, t.clinicaId],
+      foreignColumns: [parcela.id, parcela.clinicaId],
+    }).onDelete('restrict'),
     index('pagamento_parcela_idx').on(t.parcelaId),
     index('pagamento_data_idx').on(t.pagoEm),
     check('pagamento_valor_positivo', sql`${t.valor} > 0`),

@@ -19,6 +19,10 @@ import { somar } from '@/lib/domain/dinheiro'
 import { instanteDe } from '@/lib/domain/fuso'
 import { mesDe, periodoAnterior } from '@/lib/domain/periodo'
 import { caixaDoPeriodo, montarPainel, producaoDoPeriodo } from './consultas'
+import { desligarTriggersDeAplicacao, religarTriggersDeAplicacao } from '@/lib/demo/triggers'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
+import { clinicaDaExecucao, idDaPrimeiraClinica } from '@/lib/demo/clinicaDaDemo'
+import { eq } from 'drizzle-orm'
 
 /**
  * Demonstração da Fase 11 contra o Postgres.
@@ -74,7 +78,11 @@ async function main(): Promise<void> {
         mfaSecret: segredo,
         mfaAtivo: true,
       })
-      .returning({ id: usuario.id })
+      // `clinicaId` no returning: o tenant do Ator é o do USUÁRIO, lido da linha que
+      // acabou de nascer. Ler de `clinicaAtual()` compilaria igual e seria o andaime
+      // — e num banco com duas clínicas montaria um ator cuja clínica não é a do seu
+      // próprio usuário, que é precisamente o que a sessão real nunca faz.
+      .returning({ id: usuario.id, clinicaId: usuario.clinicaId })
     const [novoProf] = await tx
       .insert(profissional)
       .values({ usuarioId: novoUsuario!.id, cro: `R${Date.now() % 100000}`, ufCro: 'SP' })
@@ -91,6 +99,7 @@ async function main(): Promise<void> {
 
   const ator: Ator = {
     usuarioId: uDentista!.id,
+    clinicaId: uDentista!.clinicaId,
     nome: `${MARCA} Dra. Ana`,
     email: 'rel@local',
     perfil: 'dentista',
@@ -108,9 +117,21 @@ async function main(): Promise<void> {
     criados.pacientes.push(p!.id)
   }
 
+  /*
+   * O filtro por `clinica_id` não é redundante enquanto o app conecta como dono
+   * das tabelas: **dono ignora política de RLS**, então esta consulta vê o
+   * catálogo de TODAS as clínicas. Sem o filtro ela devolvia o procedimento de uma
+   * clínica enquanto o script gravava na outra, e o FK composto da `drizzle/0023`
+   * recusava o `item_plano` — que é o banco fazendo o trabalho certo.
+   *
+   * Quando a aplicação passar a conectar com a role sem BYPASSRLS, a política
+   * cobrirá isso sozinha. Até então, o filtro é o que existe.
+   */
   const [proc] = await db
     .select({ id: procedimento.id, nome: procedimento.nome })
     .from(procedimento)
+    .where(eq(procedimento.clinicaId, clinicaDaExecucao()))
+    .orderBy(procedimento.codigo)
     .limit(1)
 
   try {
@@ -178,7 +199,11 @@ async function main(): Promise<void> {
     let parcelaIds: string[]
     try {
       await cliente.query('begin')
-      await cliente.query("set local session_replication_role = 'replica'")
+      // Desliga só as triggers de APLICAÇÃO — as de FK ficam de pé. O
+    // `session_replication_role` que estava aqui desligava as duas, e já deixou
+    // 5 linhas órfãs em movimento_estoque, o que derrubou a 0023. Ver
+    // lib/demo/triggers.ts.
+      const tabelasDesligadas = await desligarTriggersDeAplicacao(cliente)
       const r = await cliente.query(
         `insert into cobranca (paciente_id, valor_total, forma, criado_por_id)
          values ($1, '600.00', 'pix', $2) returning id`,
@@ -191,6 +216,9 @@ async function main(): Promise<void> {
         [cobrancaId, `${MES}-10`, `${MES}-25`],
       )
       parcelaIds = p1.rows.map((x: { id: string }) => x.id)
+      // ANTES do commit: `disable trigger` é DDL — comitar desligado deixaria o
+      // prontuário editável para sempre, em silêncio.
+      await religarTriggersDeAplicacao(cliente, tabelasDesligadas)
       await cliente.query('commit')
     } catch (e) {
       await cliente.query('rollback')
@@ -359,7 +387,11 @@ async function limpar(criados: {
   const c = await pool.connect()
   try {
     await c.query('begin')
-    await c.query("set local session_replication_role = 'replica'")
+    // Desliga só as triggers de APLICAÇÃO — as de FK ficam de pé. O
+    // `session_replication_role` que estava aqui desligava as duas, e já deixou
+    // 5 linhas órfãs em movimento_estoque, o que derrubou a 0023. Ver
+    // lib/demo/triggers.ts.
+    const tabelasDesligadas = await desligarTriggersDeAplicacao(c)
     await c.query(
       `delete from pagamento where parcela_id in (
          select pa.id from parcela pa join cobranca co on co.id = pa.cobranca_id
@@ -388,6 +420,9 @@ async function limpar(criados: {
     await c.query('delete from profissional where usuario_id = any($1)', [criados.usuarios])
     await c.query('delete from usuario where id = any($1)', [criados.usuarios])
     await c.query('delete from cadeira where id = any($1)', [criados.cadeiras])
+    // ANTES do commit: `disable trigger` é DDL — comitar desligado deixaria o
+    // prontuário editável para sempre, em silêncio.
+    await religarTriggersDeAplicacao(c, tabelasDesligadas)
     await c.query('commit')
     console.log('Dados da demonstração removidos.')
   } catch (e) {
@@ -398,7 +433,21 @@ async function limpar(criados: {
   }
 }
 
-main()
+/**
+ * O contexto de clínica é aberto AQUI, envolvendo o `main()` inteiro.
+ *
+ * Script de linha de comando não tem sessão de onde herdar o tenant, e desde a
+ * `drizzle/0022` toda escrita depende de `app.clinica_id` — `app_clinica_id()`
+ * estoura sem ele, de propósito, para "esqueci o contexto" não virar linha gravada
+ * na clínica errada.
+ *
+ * Envolver no ponto de entrada, e não dentro de `main()`, é de propósito: qualquer
+ * função que `main()` chame, hoje ou amanhã, herda o contexto pelo
+ * `AsyncLocalStorage`. Espalhar `comContextoDeClinica` por dentro deixaria brecha
+ * na próxima função acrescentada.
+ */
+idDaPrimeiraClinica()
+  .then((clinicaId) => comContextoDeClinica(clinicaId, main))
   .then(async () => {
     await pool.end()
     process.exit(process.exitCode ?? 0)

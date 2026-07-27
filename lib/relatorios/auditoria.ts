@@ -5,12 +5,14 @@ import { auditLog, clinica, paciente, usuario } from '@/lib/db/schema'
 import { addDias } from '@/lib/domain/datas'
 import { FUSO_PADRAO, inicioDoDia } from '@/lib/domain/fuso'
 import type { Periodo } from '@/lib/domain/periodo'
+import { DA_CLINICA_ATUAL } from '@/lib/tenant/sql'
 import { and, desc, eq, gte, isNotNull, lt, sql } from 'drizzle-orm'
 
 /** Fuso da clínica — a mesma leitura que os outros relatórios fazem. */
 async function fusoDaClinica(): Promise<string> {
-  const [c] = await db.select({ fuso: clinica.fusoHorario }).from(clinica).limit(1)
-  return c?.fuso ?? FUSO_PADRAO
+  const [c] = await db.select({ fuso: clinica.fusoHorario }).from(clinica).where(DA_CLINICA_ATUAL)
+  if (!c) throw new Error('Clínica do contexto não encontrada ao resolver o fuso da auditoria.')
+  return c.fuso
 }
 
 /**

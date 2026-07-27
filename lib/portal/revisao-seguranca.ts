@@ -5,15 +5,23 @@ import { gerarCodigoTotp, gerarSegredoTotp } from '@/lib/auth/totp'
 import { db, pool } from '@/lib/db'
 import {
   agendamento,
+  anamnese,
+  consentimento,
   documento,
+  listaEspera,
   paciente,
   pacienteConta,
   pacienteSessao,
+  procedimento,
   profissional,
+  regraAutoatendimento,
   usuario,
 } from '@/lib/db/schema'
 import { COOKIE_PORTAL } from './sessao'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
+import { desligarTriggersDeAplicacao, religarTriggersDeAplicacao } from '@/lib/demo/triggers'
+import { idDaPrimeiraClinica } from '@/lib/demo/clinicaDaDemo'
+import { clinicaDoContexto, comContextoDeClinica } from '@/lib/tenant/contexto'
 
 /**
  * Revisão de segurança do portal — **obrigatória nesta fase** (ROADMAP).
@@ -41,6 +49,16 @@ const BASE = 'http://localhost:3000'
 const SENHA_A = 'portal seguro A 42'
 const SENHA_B = 'portal seguro B 42'
 const SENHA_STAFF = 'Staff-Revisao-2026!x'
+/**
+ * Marcador único plantado no dado do paciente B.
+ *
+ * Procurar o nome dele no HTML é frágil nos dois sentidos: pode não aparecer mesmo
+ * havendo vazamento (o nome vem de outra consulta) e pode aparecer sem vazamento. Uma
+ * string que só existe naquela linha responde exatamente "este byte saiu de lá?".
+ */
+const SEGREDO_DE_B = 'MARCADOR-VAZAMENTO-B-8f3a1c'
+/** Marcador no texto do termo, para provar que a tela de assinatura renderizou. */
+const SEGREDO_DE_TERMO = 'MARCADOR-TERMO-4b7e2d'
 
 let falhas = 0
 let passaram = 0
@@ -131,6 +149,16 @@ async function entrarComoStaff(email: string, segredo: string): Promise<string> 
 async function main(): Promise<void> {
   console.log('\n═══ Revisão de segurança do portal do paciente ═══')
 
+  /**
+   * A clínica em que este script trabalha, lida do contexto.
+   *
+   * Necessária porque o script roda como DONO das tabelas, e ali **não há política de
+   * RLS filtrando por você**: todo `update` sem `where clinica_id` alcança todas as
+   * clínicas. Ver o comentário no bloco A2, que documenta o estrago que isso causou.
+   */
+  const clinicaDoTeste = clinicaDoContexto()
+  if (!clinicaDoTeste) throw new Error('Sem clínica no contexto — o envelope não foi aberto.')
+
   const criados = { usuarios: [] as string[], pacientes: [] as string[] }
 
   // ── Cenário: dois pacientes com dado próprio, e um dentista ────────────────
@@ -200,6 +228,36 @@ async function main(): Promise<void> {
   const orcB = await criarOrcamentoEnviado(B.pacienteId, prof!.id, uStaff!.id)
   const docB = await criarDocumento(B.pacienteId, uStaff!.id)
 
+  /**
+   * Dado das telas novas, do paciente B: uma ficha de saúde e um pedido na fila.
+   *
+   * O texto `SEGREDO_DE_B` entra numa resposta da anamnese de propósito. Procurar o
+   * NOME do paciente B no HTML não bastaria: o nome pode aparecer legitimamente em
+   * outro lugar da página (não aparece, mas poderia), e um marcador único só pode ter
+   * vindo da anamnese dele.
+   */
+  const [anamneseB] = await db
+    .insert(anamnese)
+    .values({
+      pacienteId: B.pacienteId,
+      profissionalId: prof!.id,
+      versao: 1,
+      respostas: { alergias: { tipo: 'sim_nao_detalhe', valor: true, detalhe: SEGREDO_DE_B } },
+      versaoFormulario: '1',
+      origem: 'clinica',
+    })
+    .returning({ id: anamnese.id })
+
+  const [esperaB] = await db
+    .insert(listaEspera)
+    .values({
+      pacienteId: B.pacienteId,
+      turno: 'manha',
+      validoAte: new Date(Date.now() + 30 * 86_400_000),
+      observacao: SEGREDO_DE_B,
+    })
+    .returning({ id: listaEspera.id })
+
   try {
     const sessaoA = await entrarNoPortalHttp(A.email, A.senha)
     if (!sessaoA.cookie) throw new Error('não consegui abrir sessão do paciente A')
@@ -267,6 +325,345 @@ async function main(): Promise<void> {
       !htmlInicio.includes(agB!.id),
       'id de agendamento de outro paciente aparecer no HTML',
     )
+
+    // ── A2. Autoatendimento (Fase 19) ───────────────────────────────────────
+    //
+    // ⚠️ **O recurso tem de estar LIGADO aqui, e isto não é conveniência de fixture.**
+    //
+    // A primeira versão deste bloco rodou com `regra_autoatendimento.ativo = false` (o
+    // padrão, e a decisão certa para produção). A tela abriu com 200, mostrou o aviso
+    // "esta clínica ainda não abriu o agendamento" — e **quatro dos seis casos passaram
+    // vazios**: não havia grade nenhuma para vazar o nome do outro paciente.
+    //
+    // Nona ocorrência desta forma neste projeto. O padrão é sempre o mesmo: a
+    // asserção procura algo que não pode aparecer, e o que ela não vê é a ausência da
+    // tela inteira, não a ausência do vazamento.
+    //
+    // Então: liga, mede, e restaura no fim. E o caso `deveFuncionar` sobre a grade
+    // existir é o que impede isto voltar a ser vazio — se a grade não renderizar, a
+    // revisão reprova em vez de ficar verde.
+    const [regraAntes] = await db
+      .select({ ativo: regraAutoatendimento.ativo })
+      .from(regraAutoatendimento)
+      .where(eq(regraAutoatendimento.clinicaId, clinicaDoTeste))
+      .limit(1)
+
+    // Só a clínica do teste, pelo mesmo motivo: como dono, um `update` sem `where`
+    // alcança todas.
+    await db
+      .update(regraAutoatendimento)
+      .set({ ativo: true })
+      .where(eq(regraAutoatendimento.clinicaId, clinicaDoTeste))
+    /**
+     * UM procedimento marcável, escolhido por id.
+     *
+     * ⚠️ A primeira versão fazia `update procedimento set permite_autoagendamento =
+     * true where ativo = true` — sem `clinica_id`, e este script roda como **DONO**,
+     * onde não há política de RLS filtrando por você. Resultado medido: **440
+     * procedimentos de todas as clínicas marcados como agendáveis pelo paciente**, e a
+     * restauração devolvia só o primeiro.
+     *
+     * O estrago não é cosmético: é exatamente o que o default `false` existe para
+     * impedir. Bastaria a clínica ligar o autoatendimento depois para o paciente poder
+     * marcar exodontia de terceiro molar pelo celular — e ninguém saberia que foi uma
+     * revisão de segurança que abriu a lista.
+     *
+     * Quarta vez que a falta de `where clinica_id` num script rodando como dono morde
+     * alguém neste projeto. Aqui o `select` escolhe um id, e o `update` mira nele.
+     */
+    const [candidato] = await db
+      .select({ id: procedimento.id })
+      .from(procedimento)
+      .where(and(eq(procedimento.ativo, true), eq(procedimento.clinicaId, clinicaDoTeste)))
+      .limit(1)
+    if (candidato) {
+      await db
+        .update(procedimento)
+        .set({ permiteAutoagendamento: true })
+        .where(eq(procedimento.id, candidato.id))
+    }
+    const procMarcavel = candidato
+
+    //
+    // A fase acrescentou rotas que ESCREVEM na agenda a partir do portal. Sem casos
+    // aqui, a rede de IDOR ficaria com um buraco do tamanho da fase — e o buraco
+    // estaria justamente nas rotas novas, que são as menos exercitadas.
+    bloco('A2. Autoatendimento — a grade e o desmarcar')
+
+    const agendar = await fetch(`${BASE}/meu/agendar`, {
+      headers: { cookie: cookieA },
+      redirect: 'manual',
+    })
+    const htmlAgendar = agendar.status === 200 ? await agendar.text() : ''
+
+    // A tela abre (o autoatendimento pode estar desligado, e aí ela explica isso) —
+    // o que ela NÃO pode é falar de outro paciente.
+    deveFuncionar(
+      agendar.status === 200,
+      'a tela de agendar abre para o paciente A',
+      `status ${agendar.status}`,
+    )
+    /**
+     * A grade EXISTE nesta página — a contraprova que dá sentido aos casos abaixo.
+     *
+     * Sem ela, "o nome do outro paciente não aparece" seria verdade também numa página
+     * em branco, e a revisão ficaria verde provando nada. É o mesmo raciocínio do
+     * `deveFuncionar` do documento próprio, algumas linhas acima.
+     */
+    deveFuncionar(
+      htmlAgendar.includes('Tipo de atendimento') && htmlAgendar.includes('Com quem'),
+      'a grade de agendamento realmente renderizou (senão os casos abaixo seriam vazios)',
+    )
+    deveFalhar(
+      !htmlAgendar.includes('Revisão Paciente B'),
+      'nome de outro paciente aparecer na tela de agendar',
+    )
+    deveFalhar(
+      !htmlAgendar.includes(agB!.id),
+      'id de agendamento de outro paciente aparecer na tela de agendar',
+    )
+    deveFalhar(
+      !htmlAgendar.includes(B.pacienteId),
+      'id do paciente B aparecer no HTML da tela de agendar',
+    )
+
+    /**
+     * A grade é o ponto sensível da fase: ela mostra o que está LIVRE, e a ausência
+     * de um horário revela que alguém o ocupou. Isso é inevitável — é a natureza de
+     * uma agenda pública — e o que não pode aparecer é QUEM.
+     *
+     * `horariosLivres` devolve apenas `{hora, inicio, fim}`, então o vazamento só
+     * seria possível por um campo novo. Este caso é a rede para o dia em que alguém
+     * acrescentar `ocupadoPor` para a tela da recepção e a mesma função continuar
+     * alimentando o portal.
+     */
+    deveFalhar(
+      !/ocupad[oa]\s+por/i.test(htmlAgendar) && !htmlAgendar.includes('Revisão Paciente'),
+      'a grade do paciente dizer quem ocupa um horário',
+    )
+
+    // Desmarcar por id na URL: a ação exige sessão e filtra por `sessao.pacienteId`,
+    // mas o caso existe porque "exige sessão" e "filtra pelo paciente da sessão" são
+    // duas coisas, e é a segunda que impede o IDOR.
+    const desmarcarDeB = await fetch(`${BASE}/meu`, {
+      method: 'POST',
+      headers: {
+        cookie: cookieA,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ agendamentoId: agB!.id, motivo: 'tentativa' }),
+      redirect: 'manual',
+    })
+    deveFalhar(
+      desmarcarDeB.status !== 200 || !(await desmarcarDeB.text()).includes('desmarcada'),
+      'desmarcar consulta de outro paciente por POST',
+      `status ${desmarcarDeB.status}`,
+    )
+
+    // Restaura o autoatendimento como estava. Deixar ligado mudaria o comportamento
+    // do portal para quem for testar depois, e essa pessoa não teria como saber que
+    // foi uma revisão de segurança que abriu a agenda da clínica.
+    await db
+      .update(regraAutoatendimento)
+      .set({ ativo: regraAntes?.ativo ?? false })
+      .where(eq(regraAutoatendimento.clinicaId, clinicaDoTeste))
+    if (procMarcavel) {
+      await db
+        .update(procedimento)
+        .set({ permiteAutoagendamento: false })
+        .where(eq(procedimento.id, procMarcavel.id))
+    }
+
+    // ── A3. Ficha de saúde, termos e a fila (telas da Fase 19) ──────────────
+    //
+    // Três rotas novas que LEEM e ESCREVEM dado sensível: a anamnese (declaração de
+    // saúde), o termo (consentimento) e a lista de espera. Sem casos aqui, a rede de
+    // IDOR ficaria com um buraco do tamanho das telas — e o buraco estaria nas rotas
+    // menos exercitadas, que são justamente as novas.
+    bloco('A3. Ficha de saúde, termos e fila — as telas novas')
+
+    const fichaDeA = await fetch(`${BASE}/meu/anamnese`, {
+      headers: { cookie: cookieA },
+      redirect: 'manual',
+    })
+    const htmlFicha = fichaDeA.status === 200 ? await fichaDeA.text() : ''
+
+    /**
+     * A ficha de A ABRE e RENDERIZOU o formulário — a contraprova que dá sentido aos
+     * dois casos seguintes.
+     *
+     * Sem ela, "o marcador do paciente B não aparece" seria verdade também numa página
+     * em branco, e a revisão ficaria verde provando nada. Nona e décima ocorrência
+     * desta forma no projeto; o padrão é sempre o mesmo, então a contraprova vem
+     * primeiro.
+     */
+    deveFuncionar(
+      fichaDeA.status === 200,
+      'a ficha de saúde abre para o paciente A',
+      `status ${fichaDeA.status}`,
+    )
+    /**
+     * Os marcadores são do PRIMEIRO passo, e isso não é detalhe.
+     *
+     * A primeira versão procurava `'Enviar minhas respostas'` — o botão do ÚLTIMO passo
+     * de um formulário de quatro. Ele não está no HTML servido, e o caso reprovou
+     * apontando para a página como se ela estivesse quebrada. A página estava certa; a
+     * asserção estava errada, e foi a contraprova pegando o meu erro em vez do da tela.
+     *
+     * Também evitei procurar `'Parte 1 de'`: o texto vem de `Parte {passo+1} de {total}`,
+     * e o React separa nós de texto interpolado com marcadores de comentário — o HTML
+     * traz `Parte <!-- -->1<!-- --> de`. Buscar frase com expressão no meio é falso
+     * negativo esperando acontecer.
+     */
+    deveFuncionar(
+      htmlFicha.includes('Saúde geral') && htmlFicha.includes('Continuar'),
+      'o formulário da ficha realmente renderizou (senão os casos abaixo seriam vazios)',
+    )
+    deveFalhar(
+      !htmlFicha.includes(SEGREDO_DE_B),
+      'resposta de anamnese de outro paciente aparecer na ficha de A',
+    )
+    deveFalhar(
+      !htmlFicha.includes(anamneseB!.id) && !htmlFicha.includes(B.pacienteId),
+      'id de anamnese ou de paciente alheio aparecer no HTML da ficha',
+    )
+
+    /**
+     * ⚠️ O TERMO tem de EXISTIR aqui, e isto não é conveniência de fixture.
+     *
+     * `regra_autoatendimento.termo_de_atendimento` é nulo no banco de desenvolvimento —
+     * a clínica não escreveu termo nenhum. Com ele nulo, `/meu/termos` mostra "esta
+     * clínica não tem termo para aceitar" e **a tela de assinatura não renderiza**: o
+     * caso de conformidade abaixo ("não promete validade jurídica") passaria sem que
+     * nenhuma das frases jurídicas existisse na página.
+     *
+     * Décima primeira ocorrência desta forma no projeto, e a segunda dentro deste
+     * arquivo — o bloco A2 documenta a mesma coisa sobre `ativo`. Então: escreve o
+     * termo, mede, e restaura no fim.
+     */
+    const [termoAntes] = await db
+      .select({ termo: regraAutoatendimento.termoDeAtendimento })
+      .from(regraAutoatendimento)
+      .where(eq(regraAutoatendimento.clinicaId, clinicaDoTeste))
+      .limit(1)
+
+    await db
+      .update(regraAutoatendimento)
+      .set({ termoDeAtendimento: `Termo de atendimento da revisão. ${SEGREDO_DE_TERMO}` })
+      .where(eq(regraAutoatendimento.clinicaId, clinicaDoTeste))
+
+    const termosDeA = await fetch(`${BASE}/meu/termos`, {
+      headers: { cookie: cookieA },
+      redirect: 'manual',
+    })
+    const htmlTermos = termosDeA.status === 200 ? await termosDeA.text() : ''
+    deveFuncionar(
+      termosDeA.status === 200,
+      'a tela de termos abre para o paciente A',
+      `status ${termosDeA.status}`,
+    )
+    /**
+     * A tela de ASSINATURA renderizou — a contraprova do caso de conformidade.
+     *
+     * Procura o texto do termo (marcador único) **e** o controle de aceite. Só o
+     * primeiro provaria que o termo apareceu; só o segundo poderia casar com outra
+     * parte da página. Os dois juntos dizem "a interface de assinar está na tela".
+     */
+    deveFuncionar(
+      htmlTermos.includes(SEGREDO_DE_TERMO) && htmlTermos.includes('Li o texto acima'),
+      'a tela de assinatura realmente renderizou (senão o caso de conformidade seria vazio)',
+    )
+    /**
+     * ⚖️ A tela não pode prometer validade que a assinatura não tem.
+     *
+     * Este caso é de conformidade, não de IDOR, e está aqui porque é o único lugar do
+     * projeto que roda contra o HTML servido. O que se grava é assinatura eletrônica
+     * **simples** (MP 2.200-2/2001): as palavras abaixo afirmariam outra coisa, e a
+     * frase que engana o paciente é a mesma que se lê em voz alta contra a clínica.
+     */
+    deveFalhar(
+      !/validade jur[íi]dica|assinatura digital|ICP-Brasil|certificado digital/i.test(htmlTermos),
+      'a tela de termos prometer validade jurídica ou assinatura digital',
+    )
+    deveFalhar(
+      !htmlTermos.includes(SEGREDO_DE_B) && !htmlTermos.includes(B.pacienteId),
+      'dado ou id de outro paciente aparecer na tela de termos',
+    )
+
+    /**
+     * Assinar EM NOME DE OUTRO paciente, por id na requisição.
+     *
+     * `assinarTermoNoPortal` é a **única** função do portal que aceita um id de
+     * paciente de fora — porque o responsável legal assina por outra pessoa, e essa
+     * pessoa não é a da sessão. O que impede o IDOR não é a assinatura da função (não
+     * pode ser), é `quemAssina`: exige que a sessão seja do próprio paciente adulto ou
+     * do responsável legal cadastrado.
+     *
+     * A e B não têm vínculo de responsabilidade, então isto tem de bater em
+     * `ASSINATURA_DE_TERCEIRO`. É o caso mais importante deste bloco: é o único ponto
+     * do portal onde a defesa é uma regra de domínio e não a forma da função.
+     */
+    const assinarPorB = await fetch(`${BASE}/meu/termos`, {
+      method: 'POST',
+      headers: { cookie: cookieA, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ pacienteAlvoId: B.pacienteId, texto: 'x', versaoTermo: 'v1' }),
+      redirect: 'manual',
+    })
+    /**
+     * A asserção olha o BANCO, não o HTML — e a primeira versão não olhava.
+     *
+     * Ela era `!texto.includes('assinado')`, copiada do caso do desmarcar acima. E deu
+     * **falso VAZOU** no instante em que a tela de assinatura passou a renderizar: a
+     * palavra aparece no HTML por outro motivo (o payload do React carrega o nome da
+     * server action `assinarTermoNoPortal`), e a asserção não sabia distinguir "a
+     * palavra está na página" de "a linha foi gravada".
+     *
+     * A correção é tornar a asserção **precisa**, não afrouxá-la: o que a segurança
+     * afirma é que **nenhum consentimento nasceu para o paciente B**. Isso é contável, e
+     * é imune a coincidência de texto.
+     *
+     * (Um POST a rota de página não invoca server action — precisaria do id da action.
+     * O caso vale como sonda de superfície: se um dia a rota aceitar POST e agir, a
+     * contagem pega.)
+     */
+    const consentimentosDeB = await db
+      .select({ id: consentimento.id })
+      .from(consentimento)
+      .where(eq(consentimento.pacienteId, B.pacienteId))
+    deveFalhar(
+      consentimentosDeB.length === 0,
+      'assinar termo em nome de outro paciente (nenhum consentimento nasceu para B)',
+      `status ${assinarPorB.status}, ${consentimentosDeB.length} linha(s)`,
+    )
+
+    /**
+     * A fila é tela da CLÍNICA, e o paciente não pode abri-la.
+     *
+     * Ela mostra nome, telefone e observação de todos os pacientes que aguardam — é a
+     * tela do portal ao contrário, e por isso vive em `app/(staff)`. Um paciente que a
+     * abrisse veria a fila inteira, o que é o vazamento mais direto possível.
+     */
+    const filaPeloPaciente = await fetch(`${BASE}/espera`, {
+      headers: { cookie: cookieA },
+      redirect: 'manual',
+    })
+    deveFalhar(
+      filaPeloPaciente.status !== 200,
+      'sessão de PACIENTE abrir a lista de espera da clínica',
+      `status ${filaPeloPaciente.status} → ${filaPeloPaciente.headers.get('location') ?? '—'}`,
+    )
+    deveFalhar(
+      !(await filaPeloPaciente.text()).includes(SEGREDO_DE_B),
+      'observação da fila de outro paciente vazar para o portal',
+      `pedido ${esperaB!.id.slice(0, 8)}…`,
+    )
+
+    // Restaura o termo. Deixar o texto da revisão gravado faria a próxima pessoa
+    // encontrar um "Termo de atendimento da revisão" no portal da clínica.
+    await db
+      .update(regraAutoatendimento)
+      .set({ termoDeAtendimento: termoAntes?.termo ?? null })
+      .where(eq(regraAutoatendimento.clinicaId, clinicaDoTeste))
 
     // ── B. Cruzamento de realms ─────────────────────────────────────────────
     bloco('B. Realms — cookie de um lado tentando abrir o outro')
@@ -507,7 +904,30 @@ async function criarOrcamentoEnviado(
   const c = await pool.connect()
   try {
     await c.query('begin')
-    await c.query("set local session_replication_role = 'replica'")
+    /**
+     * Contexto de clínica na transação.
+     *
+     * A conexão vem crua do pool e, desde a `drizzle/0022`, sem `app.clinica_id`
+     * definido toda escrita estoura em `app_clinica_id()` — de propósito. Antes
+     * havia um andaime em `lib/db/index.ts` que adivinhava a clínica; ele saiu, e
+     * quem precisa de contexto passou a dizer qual é. `is_local => true` faz o
+     * valor morrer no commit, então a conexão volta ao pool limpa.
+     */
+    await c.query('select set_config($1, $2, true)', ['app.clinica_id', await idDaPrimeiraClinica()])
+    /**
+     * `DISABLE TRIGGER USER` tabela por tabela, e **não**
+     * `session_replication_role = 'replica'`, que era o que estava aqui.
+     *
+     * O atalho desliga também as triggers INTERNAS de FK, e o estrago foi real: uma
+     * limpeza de demonstração apagou uma `execucao` e deixou cinco linhas órfãs em
+     * `movimento_estoque` — o que depois impediu a `drizzle/0023` de criar FK
+     * composto, porque não se cria constraint sobre dado já inconsistente.
+     *
+     * O helper religa ANTES do commit e **confere** que religou: `DISABLE TRIGGER`
+     * é DDL, então comitar com a trigger desligada a deixa desligada para sempre. A
+     * pergunta certa não é "eu religuei?", é "está religado?".
+     */
+    const desligadas = await desligarTriggersDeAplicacao(c)
     const plano = await c.query(
       `insert into plano_tratamento (paciente_id, profissional_id, status, titulo)
        values ($1, $2, 'ativo', 'revisão') returning id`,
@@ -523,6 +943,7 @@ async function criarOrcamentoEnviado(
        values ($1, 'Procedimento de revisão', 1, '100.00', 1)`,
       [orc.rows[0].id],
     )
+    await religarTriggersDeAplicacao(c, desligadas)
     await c.query('commit')
     return { id: orc.rows[0].id }
   } catch (e) {
@@ -557,7 +978,30 @@ async function limpar(
   const c = await pool.connect()
   try {
     await c.query('begin')
-    await c.query("set local session_replication_role = 'replica'")
+    /**
+     * Contexto de clínica na transação.
+     *
+     * A conexão vem crua do pool e, desde a `drizzle/0022`, sem `app.clinica_id`
+     * definido toda escrita estoura em `app_clinica_id()` — de propósito. Antes
+     * havia um andaime em `lib/db/index.ts` que adivinhava a clínica; ele saiu, e
+     * quem precisa de contexto passou a dizer qual é. `is_local => true` faz o
+     * valor morrer no commit, então a conexão volta ao pool limpa.
+     */
+    await c.query('select set_config($1, $2, true)', ['app.clinica_id', await idDaPrimeiraClinica()])
+    /**
+     * `DISABLE TRIGGER USER` tabela por tabela, e **não**
+     * `session_replication_role = 'replica'`, que era o que estava aqui.
+     *
+     * O atalho desliga também as triggers INTERNAS de FK, e o estrago foi real: uma
+     * limpeza de demonstração apagou uma `execucao` e deixou cinco linhas órfãs em
+     * `movimento_estoque` — o que depois impediu a `drizzle/0023` de criar FK
+     * composto, porque não se cria constraint sobre dado já inconsistente.
+     *
+     * O helper religa ANTES do commit e **confere** que religou: `DISABLE TRIGGER`
+     * é DDL, então comitar com a trigger desligada a deixa desligada para sempre. A
+     * pergunta certa não é "eu religuei?", é "está religado?".
+     */
+    const desligadas = await desligarTriggersDeAplicacao(c)
     await c.query(
       'delete from paciente_sessao where conta_id in (select id from paciente_conta where paciente_id = any($1))',
       [criados.pacientes],
@@ -571,12 +1015,30 @@ async function limpar(
     await c.query('delete from orcamento where paciente_id = any($1)', [criados.pacientes])
     await c.query('delete from plano_tratamento where paciente_id = any($1)', [criados.pacientes])
     await c.query('delete from agendamento where paciente_id = any($1)', [criados.pacientes])
+    /**
+     * As tabelas das telas novas, ANTES de `paciente`.
+     *
+     * `anamnese`, `lista_espera` e `consentimento` têm FK com `ON DELETE RESTRICT` para
+     * `paciente` — e `DISABLE TRIGGER USER` **preserva** as triggers internas de FK, que
+     * é justamente o motivo de ele ser usado aqui em vez do atalho. Então esquecer
+     * estas três não deixaria lixo: faria o `delete from paciente` falhar, a limpeza
+     * cair no `rollback` e o script terminar dizendo "Falha ao limpar" com dois
+     * pacientes fictícios comitados no banco.
+     *
+     * `consentimento` entra na lista mesmo esperando zero linhas: o caso "assinar em
+     * nome de outro" tem de falhar, e se um dia ele passar (o vazamento que a revisão
+     * existe para pegar), a linha existe e a limpeza precisa dar conta dela.
+     */
+    await c.query('delete from anamnese where paciente_id = any($1)', [criados.pacientes])
+    await c.query('delete from lista_espera where paciente_id = any($1)', [criados.pacientes])
+    await c.query('delete from consentimento where paciente_id = any($1)', [criados.pacientes])
     await c.query('delete from audit_log where paciente_id = any($1)', [criados.pacientes])
     await c.query("delete from audit_log where ator_email like 'rev-p%@local'")
     await c.query("delete from audit_log where ator_email like 'nao-existe-%@local'")
     await c.query('delete from paciente where id = any($1)', [criados.pacientes])
     await c.query('delete from profissional where usuario_id = any($1)', [criados.usuarios])
     await c.query('delete from usuario where id = any($1)', [criados.usuarios])
+    await religarTriggersDeAplicacao(c, desligadas)
     await c.query('commit')
     console.log('Dados da revisão removidos.')
   } catch (e) {
@@ -587,7 +1049,20 @@ async function limpar(
   }
 }
 
-main()
+/**
+ * O script inteiro roda com a clínica no contexto.
+ *
+ * Script não tem sessão, e desde a `drizzle/0022` toda escrita exige
+ * `app.clinica_id` — o andaime que adivinhava a clínica saiu de `lib/db/index.ts`
+ * de propósito. `comContextoDeClinica` usa `run()`, então todas as consultas do
+ * `main` (dezenas) herdam o contexto sem que cada uma precise dizer qual é.
+ *
+ * Envolver o `main` inteiro é correto AQUI porque este script fala por uma clínica
+ * só. Num laço sobre várias — o despachante, por exemplo — o contexto tem de ser
+ * trocado a cada iteração, senão todas herdam o da primeira.
+ */
+idDaPrimeiraClinica()
+  .then((clinicaId) => comContextoDeClinica(clinicaId, main))
   .then(async () => {
     await pool.end()
     process.exit(process.exitCode ?? 0)

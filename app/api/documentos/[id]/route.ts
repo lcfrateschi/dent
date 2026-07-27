@@ -6,6 +6,7 @@ import { atorAtual } from '@/lib/authz/sessao'
 import { formatoDoMime, documentoParaDownload } from '@/lib/documentos/consultas'
 import { FORMATOS, nomeParaDownload, podeExibirEmbutido } from '@/lib/domain/arquivo'
 import type { NextRequest } from 'next/server'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
 
 /**
  * Download de documento do prontuário.
@@ -47,6 +48,14 @@ export async function GET(
   // garante a checagem de PERFIL — o middleware não conhece o recurso.
   const ator = await atorAtual()
   if (!ator) return new Response('Unauthorized', { status: 401 })
+  /**
+   * Envelope explícito de tenant — route handler não tem o store por requisição
+   * do React, e o `enterWith` de `atorAtual()` não sobrevive ao `await` de volta
+   * para cá. Sem isto, 500 com "sem contexto de clínica" numa rota que autenticou
+   * certo — e num teste adversarial um 500 **se confunde com isolamento**.
+   * Ver `lib/tenant/armazem.ts` para a medição.
+   */
+  return await comContextoDeClinica(ator.clinicaId, async () => {
   if (!pode(ator.perfil, 'documento', 'ler')) {
     await registrar({
       ator,
@@ -123,5 +132,6 @@ export async function GET(
       'content-security-policy': "default-src 'none'; img-src 'self'; object-src 'none'; sandbox",
       referrerPolicy: 'no-referrer',
     },
+  })
   })
 }

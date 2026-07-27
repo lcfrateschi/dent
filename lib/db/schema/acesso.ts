@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  foreignKey,
   boolean,
   check,
   jsonb,
@@ -14,15 +15,24 @@ import {
 } from 'drizzle-orm/pg-core'
 import { HORARIO_PADRAO } from '@/lib/domain/horario'
 import { baseComissaoEnum, perfilUsuarioEnum } from './enums'
+import { clinicaId } from './tenant'
 
 /**
- * Configuração da clínica. Single-tenant: existe exatamente uma linha, com id = 1.
- * Não é `clinica_id` em outras tabelas — é só configuração.
+ * A clínica. **É o tenant.**
+ *
+ * Era uma linha singleton (`id = 1`) enquanto o sistema atendia uma clínica só.
+ * Virou tenant quando o Facilident passou a ser produto para várias: agora toda
+ * tabela de dados carrega `clinica_id` (ver `tenant.ts`), e o isolamento é
+ * garantido por Row Level Security no banco — não por disciplina nas consultas.
+ *
+ * A PK é `uuid` como no resto do sistema. O id do tenant nunca aparece em URL:
+ * ele vem da sessão. Mas ele aparece em nome de arquivo de exportação, em chave
+ * de storage e em log — e um `1` sequencial ali conta quantos clientes existem.
  */
 export const clinica = pgTable(
   'clinica',
   {
-    id: smallint('id').primaryKey().default(1),
+    id: uuid('id').primaryKey().defaultRandom(),
     razaoSocial: text('razao_social').notNull(),
     nomeFantasia: text('nome_fantasia'),
     cnpj: varchar('cnpj', { length: 14 }),
@@ -51,11 +61,55 @@ export const clinica = pgTable(
      * Validado por lib/domain/horario.ts.
      */
     horarioFuncionamento: jsonb('horario_funcionamento').notNull().default(HORARIO_PADRAO),
+    /**
+     * Base da comissão quando existe taxa de meio de pagamento (MDR).
+     *
+     * `false` (padrão) = valor **bruto** pago pelo paciente. `true` = valor **líquido**
+     * que entrou na conta.
+     *
+     * A pergunta não é técnica: o paciente paga R$ 100 no crédito, caem R$ 97,51, e a
+     * diferença sai do bolso de alguém. É contrato de trabalho. O padrão é o que **não
+     * muda a folha** de quem já está em operação; trocar é um UPDATE, reversível. Ver
+     * `lib/domain/taxaPagamento.ts`.
+     */
+    comissaoSobreLiquido: boolean('comissao_sobre_liquido').notNull().default(false),
     /** Granularidade dos horários oferecidos na agenda, em minutos. */
     passoAgendaMinutos: smallint('passo_agenda_minutos').notNull().default(15),
+    /**
+     * O número da Cloud API que atende esta clínica — e o único jeito de saber de
+     * quem é uma mensagem que o paciente **inicia**.
+     *
+     * O webhook da Meta chega sem cookie e sem sessão. Para resposta a lembrete
+     * dá para resolver pelo `id_externo`, porque a linha de `mensagem_whatsapp`
+     * já sabe de quem é; para conversa iniciada pelo paciente não existe linha
+     * anterior, e sem esta coluna o tenant seria adivinhado. Ver `drizzle/0024`.
+     *
+     * A resolução é **por evento**, não por bloco: o `metadata` do payload vem por
+     * bloco e um lote pode misturar números.
+     *
+     * ⚠️ Isto resolve a ENTRADA. A saída (`WHATSAPP_TOKEN`) continua sendo uma
+     * credencial de ambiente, ou seja **uma conta da Meta para todas as clínicas**.
+     * Token por clínica é segredo no banco e puxa cifragem, como `mfa_secret` —
+     * está no ROADMAP, não aqui.
+     */
+    whatsappPhoneNumberId: text('whatsapp_phone_number_id'),
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [check('clinica_singleton', sql`${t.id} = 1`)],
+  (t) => [
+    // O CHECK `clinica_singleton` (id = 1) morreu aqui: era a trava que garantia
+    // uma clínica só. O que sobra é unicidade de CNPJ, para o mesmo cliente não
+    // entrar duas vezes por engano no onboarding.
+    uniqueIndex('clinica_cnpj_uk').on(t.cnpj).where(sql`${t.cnpj} is not null`),
+    /**
+     * Um número da Meta pertence a uma clínica só. Duas clínicas com o mesmo
+     * número deixariam **indefinido** de quem é a mensagem que chega — e o
+     * webhook escolheria "alguma", que é como se manda o histórico de um paciente
+     * para a caixa de entrada de outra clínica.
+     */
+    uniqueIndex('clinica_whatsapp_numero_uk')
+      .on(t.whatsappPhoneNumberId)
+      .where(sql`${t.whatsappPhoneNumberId} is not null`),
+  ],
 )
 
 /**
@@ -65,6 +119,7 @@ export const clinica = pgTable(
 export const usuario = pgTable(
   'usuario',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
     nome: text('nome').notNull(),
     email: text('email').notNull(),
@@ -73,10 +128,24 @@ export const usuario = pgTable(
     /**
      * MFA é obrigatório para staff (dado de saúde).
      *
-     * ⚠️ O segredo TOTP está em texto claro. Quem lê esta coluna gera códigos
-     * válidos — mas para usá-los ainda precisa da senha, então não é bypass de
-     * autenticação; é agravamento de um vazamento de banco. Cifrar exige uma
-     * chave fora do banco e rotação, e está no ROADMAP como dívida.
+     * **Cifrado em repouso** (`lib/auth/mfaSegredo.ts`): AES-256-GCM com subchave
+     * derivada de `MFA_CHAVE` por HKDF, no formato `v1$nonce$cifrado`. O `usuario.id`
+     * entra como dado autenticado adicional — sem isso, quem consegue um `UPDATE`
+     * copiaria o próprio valor cifrado, de que já tem o autenticador, para a linha do
+     * administrador e passaria a gerar o segundo fator dele.
+     *
+     * Segredo anterior à cifra é reconhecido pela ausência do prefixo `v1$` (base32
+     * não tem `$`) e recifrado no login seguinte, sem janela de manutenção. Para saber
+     * se a conversão terminou:
+     * `select count(*) from usuario where mfa_secret is not null and mfa_secret not like 'v1$%'`.
+     *
+     * ⚠️ **Rotação de chave não existe ainda.** O formato suporta (`v1` → `v2`), mas
+     * hoje trocar `MFA_CHAVE` tranca todos fora do segundo fator. Falta uma
+     * `MFA_CHAVE_ANTERIOR` e um mapa versão→subchave; está avisado no `.env.example`.
+     *
+     * Continua valendo: **nenhuma consulta de `lib/admin/` seleciona esta coluna.**
+     * Cifrar não afrouxa isso — chave vazada mais coluna exposta é o mesmo problema de
+     * antes.
      */
     mfaSecret: text('mfa_secret'),
     mfaAtivo: boolean('mfa_ativo').notNull().default(false),
@@ -92,6 +161,24 @@ export const usuario = pgTable(
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
+  /**
+   * O e-mail do staff é único **globalmente**, não por clínica — e isso é
+   * deliberado, ao contrário de `paciente.cpf`, que virou por clínica.
+   *
+   * O login é e-mail + senha. Se o mesmo e-mail existisse em duas clínicas, a
+   * pergunta "quem está entrando?" não teria resposta: ou o sistema pediria a
+   * clínica num terceiro campo (atrito diário para resolver um caso raro), ou
+   * exigiria subdomínio por cliente antes de haver cliente pedindo. Com
+   * unicidade global, **o tenant é derivado da credencial** e não existe
+   * ambiguidade a resolver.
+   *
+   * O preço: um dentista que atenda em duas clínicas do Facilident precisa de um
+   * e-mail por clínica. É uma limitação real e conhecida — e o dia em que um
+   * cliente precisar de acesso a várias unidades, o desenho certo não é afrouxar
+   * este índice, é um vínculo `usuario × clinica` com papel por unidade.
+   *
+   * `paciente_conta.email` segue a mesma regra, pelo mesmo motivo (`pacientes.ts`).
+   */
   (t) => [uniqueIndex('usuario_email_uk').on(sql`lower(${t.email})`)],
 )
 
@@ -99,11 +186,9 @@ export const usuario = pgTable(
 export const profissional = pgTable(
   'profissional',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    usuarioId: uuid('usuario_id')
-      .notNull()
-      .unique()
-      .references(() => usuario.id, { onDelete: 'restrict' }),
+    usuarioId: uuid('usuario_id').notNull().unique(),
     cro: varchar('cro', { length: 20 }).notNull(),
     ufCro: varchar('uf_cro', { length: 2 }).notNull(),
     especialidade: text('especialidade'),
@@ -114,7 +199,12 @@ export const profissional = pgTable(
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex('profissional_cro_uk').on(t.cro, t.ufCro),
+    foreignKey({
+      name: 'profissional_usuario_id_usuario_id_fk',
+      columns: [t.usuarioId, t.clinicaId],
+      foreignColumns: [usuario.id, usuario.clinicaId],
+    }).onDelete('restrict'),
+    uniqueIndex('profissional_cro_uk').on(t.clinicaId, t.cro, t.ufCro),
     check('profissional_comissao_faixa', sql`${t.comissaoPct} >= 0 and ${t.comissaoPct} <= 100`),
   ],
 )

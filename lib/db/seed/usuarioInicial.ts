@@ -1,5 +1,5 @@
 import { gerarHashSenha } from '@/lib/auth/senha'
-import type { Db } from '@/lib/db'
+import type { Executor } from '@/lib/tenant/executar'
 import { usuario } from '@/lib/db/schema'
 import { count } from 'drizzle-orm'
 
@@ -24,7 +24,7 @@ export interface ResultadoUsuarioInicial {
   readonly motivo?: string
 }
 
-export async function seedUsuarioInicial(db: Db): Promise<ResultadoUsuarioInicial> {
+export async function seedUsuarioInicial(db: Executor): Promise<ResultadoUsuarioInicial> {
   if (process.env.NODE_ENV === 'production') {
     return { criado: false, motivo: 'ambiente de produção' }
   }

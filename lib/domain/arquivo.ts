@@ -280,20 +280,44 @@ export function emMegabytes(bytes: number): string {
 /**
  * Onde o arquivo mora no bucket.
  *
- * **Nunca deriva do nome enviado.** É `pacientes/<pacienteId>/<ano>/<documentoId>.<ext>`:
- * o id do documento é a chave única, e o ano só existe para o prefixo não virar
- * um diretório com dez mil objetos — o que atrapalha listagem e ciclo de vida no
- * S3.
+ * **Nunca deriva do nome enviado.** É
+ * `clinicas/<clinicaId>/pacientes/<pacienteId>/<ano>/<documentoId>.<ext>`: o id do
+ * documento é a chave única, e o ano só existe para o prefixo não virar um
+ * diretório com dez mil objetos — o que atrapalha listagem e ciclo de vida no S3.
  *
  * O nome original continua guardado em `documento.nome`, para exibir e para
  * baixar com um nome que faça sentido. Ele simplesmente não decide caminho.
+ *
+ * ── Por que o prefixo de clínica existe ─────────────────────────────────────
+ * Não é para impedir vazamento na leitura: `documento.storage_key` vem de uma
+ * consulta já filtrada por tenant (RLS), então a chave que o app resolve é, por
+ * construção, da clínica da sessão. O prefixo resolve outras três coisas, e a
+ * segunda é a que obriga:
+ *
+ * 1. **Defesa em profundidade.** Uma chave vinda de importação, de um backup
+ *    antigo ou de um bug passa a ser identificável: `chaveTemTenant()` recusa o
+ *    que não declara de quem é.
+ * 2. **Exportar e restaurar UMA clínica.** Sem prefixo, os arquivos de todos os
+ *    clientes ficam na mesma árvore `pacientes/<uuid>/` e não há como levar só os
+ *    de um. Isso não é conforto: é portabilidade de dado do titular (LGPD) para a
+ *    clínica que sai, e é restauração seletiva quando uma só precisa voltar. Um
+ *    dump de banco por clínica sem os arquivos correspondentes **não reconstitui
+ *    prontuário**.
+ * 3. **Ciclo de vida e custo por cliente** no S3, que se declara por prefixo.
+ *
+ * O `clinicaId` vem do `Ator`/`SessaoPortal`, nunca de parâmetro que o chamador
+ * escolhe — mesma regra que vale para todo o resto do tenant.
  */
 export function chaveArmazenamento(p: {
+  readonly clinicaId: string
   readonly pacienteId: string
   readonly documentoId: string
   readonly extensao: string
   readonly ano: number
 }): string {
+  if (!/^[0-9a-f-]{36}$/i.test(p.clinicaId)) {
+    erro('CLINICA_INVALIDA', 'Id de clínica inválido para chave de armazenamento.')
+  }
   if (!/^[0-9a-f-]{36}$/i.test(p.pacienteId)) {
     erro('PACIENTE_INVALIDO', 'Id de paciente inválido para chave de armazenamento.')
   }
@@ -307,7 +331,35 @@ export function chaveArmazenamento(p: {
     erro('ANO_INVALIDO', `Ano inválido para chave: ${p.ano}.`, { ano: p.ano })
   }
 
-  return `pacientes/${p.pacienteId.toLowerCase()}/${p.ano}/${p.documentoId.toLowerCase()}.${p.extensao}`
+  return `clinicas/${p.clinicaId.toLowerCase()}/pacientes/${p.pacienteId.toLowerCase()}/${p.ano}/${p.documentoId.toLowerCase()}.${p.extensao}`
+}
+
+/** O prefixo de uma clínica. Um lugar só, para exportação e backup não divergirem do gerador. */
+export function prefixoDaClinica(clinicaId: string): string {
+  if (!/^[0-9a-f-]{36}$/i.test(clinicaId)) {
+    erro('CLINICA_INVALIDA', 'Id de clínica inválido para prefixo de armazenamento.')
+  }
+  return `clinicas/${clinicaId.toLowerCase()}/`
+}
+
+/**
+ * `true` quando a chave declara a que clínica pertence.
+ *
+ * Separada de `chaveEhSegura()` de propósito, e não juntada a ela: são duas
+ * perguntas diferentes e mandam quem lê o erro para lugares diferentes. "Chave
+ * insegura" é tentativa de travessia de diretório; "chave sem tenant" é dado
+ * anterior à Fase 17 que não foi migrado, ou um gerador novo que esqueceu o
+ * prefixo. Uma mensagem só para as duas faria o segundo caso ser investigado como
+ * ataque.
+ *
+ * ⚠️ **Não confunda com autorização.** Isto diz que a chave tem *um* tenant, não
+ * que tem o *seu*. Quem garante que é o seu é a consulta que trouxe a linha do
+ * `documento`, filtrada por RLS. Se um dia alguém quiser a checagem redundante no
+ * ponto de leitura, o lugar é onde o `Ator` existe — não aqui, que é domínio puro
+ * e não conhece sessão.
+ */
+export function chaveTemTenant(chave: string): boolean {
+  return /^clinicas\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//.test(chave)
 }
 
 /**

@@ -23,6 +23,17 @@ const GUIA: DadosGuiaParaExportar = {
   clinicaCnpj: '12345678000199',
   emitidaEm: new Date('2026-07-26T13:00:00Z'),
   valorApresentado: '280.00',
+  // Campos que o XSD da ANS exige e que não estavam aqui — a ausência deles era
+  // parte do motivo de o XML nunca ter validado. Ver `CadastroParaTiss`.
+  cadastro: {
+    codigoPrestadorNaOperadora: 'PREST-00042',
+    cnes: '1234567',
+    cbos: '223208',
+    planoBeneficiario: 'Odonto Pleno',
+    tipoAtendimento: '1',
+    tipoFaturamento: '4',
+    atendimentoRecemNascido: 'N',
+  },
   itens: [
     {
       codigoTuss: '81000403',
@@ -98,8 +109,16 @@ describe('XML TISS', () => {
     expect(xml.trimEnd().endsWith('</ans:mensagemTISS>')).toBe(true)
   })
 
-  it('declara a versão do padrão', () => {
-    expect(xml).toContain(`<ans:versaoPadrao>${VERSAO_TISS}</ans:versaoPadrao>`)
+  it('declara a versão do padrão no elemento que o XSD nomeia', () => {
+    // `Padrao`, com maiúscula — não `versaoPadrao`, que era o nome inventado antes
+    // de o XSD ser carregado. O schema recusa elemento desconhecido.
+    expect(xml).toContain(`<ans:Padrao>${VERSAO_TISS}</ans:Padrao>`)
+  })
+
+  it('tem origem, destino e hora de registro — obrigatórios e ausentes antes', () => {
+    expect(xml).toContain('<ans:horaRegistroTransacao>13:00:00</ans:horaRegistroTransacao>')
+    expect(xml).toContain('<ans:CNPJ>12345678000199</ans:CNPJ>')
+    expect(xml).toMatch(/<ans:destino>\s*<ans:registroANS>123456<\/ans:registroANS>/)
   })
 
   it('as tags abrem e fecham em número igual', () => {
@@ -115,34 +134,62 @@ describe('XML TISS', () => {
     expect(pilha, 'toda tag aberta foi fechada').toHaveLength(0)
   })
 
-  it('ESCAPA caractere especial no nome do paciente', () => {
+  it('ESCAPA caractere especial nos campos de texto', () => {
     // "Sanches & Filhos" ou um `<` num campo quebrariam o XML inteiro.
+    //
+    // O apóstrofo é conferido no nome do PACIENTE, e não no da clínica: a guia
+    // odontológica do TISS 3.05.00 **não tem** nome de contratado. A clínica é
+    // identificada por CNPJ (no cabeçalho), CNES e código na operadora — o
+    // `nomeContratado` que o gerador antigo emitia não existe no schema.
     const perigoso = xmlGuiaOdontologica({
       ...GUIA,
-      pacienteNome: 'Maria & João <teste> "aspas"',
-      clinicaNome: "Clínica d'Ouro & Cia",
+      pacienteNome: `Maria & João <teste> "aspas" d'Ouro`,
+      profissionalNome: 'Dra. Helena & Silva',
     })
-    expect(perigoso).toContain('Maria &amp; João &lt;teste&gt; &quot;aspas&quot;')
-    expect(perigoso).toContain('&apos;')
+    expect(perigoso).toContain('Maria &amp; João &lt;teste&gt; &quot;aspas&quot; d&apos;Ouro')
+    expect(perigoso).toContain('Dra. Helena &amp; Silva')
     // E continua bem formado.
     expect(perigoso).not.toMatch(/<teste>/)
   })
 
   it('inclui um item por procedimento', () => {
-    const ocorrencias = [...xml.matchAll(/<ans:procedimentoExecutado>/g)].length
+    // `procedimentosExecutados` é o elemento REPETIDO (maxOccurs unbounded), não um
+    // invólucro com filhos — era assim que o gerador antigo fazia, e é invalidez
+    // estrutural que só o XSD revela.
+    const ocorrencias = [...xml.matchAll(/<ans:procedimentosExecutados>/g)].length
     expect(ocorrencias).toBe(GUIA.itens.length)
+  })
+
+  it('numera os itens sequencialmente, como o XSD exige', () => {
+    expect(xml).toContain('<ans:sequencialItem>1</ans:sequencialItem>')
+    expect(xml).toContain('<ans:sequencialItem>2</ans:sequencialItem>')
   })
 
   it('omite dente e face quando não se aplicam', () => {
     // Profilaxia não tem dente. Mandar tag vazia é motivo de rejeição de schema.
-    const blocos = xml.split('<ans:procedimentoExecutado>')
+    const blocos = xml.split('<ans:procedimentosExecutados>')
     const profilaxia = blocos.find((b) => b.includes('Profilaxia'))!
     expect(profilaxia).not.toContain('denteRegiao')
-    expect(profilaxia).not.toContain('<ans:face>')
+    expect(profilaxia).not.toContain('denteFace')
   })
 
-  it('a UF do CRO sai em maiúscula', () => {
-    expect(xml).toContain('<ans:UF>SP</ans:UF>')
+  it('a UF sai em código IBGE, porque dm_UF do TISS não aceita sigla', () => {
+    // SP = 35. O gerador antigo emitia `<ans:UF>SP</ans:UF>` e o schema recusava:
+    // dm_UF enumera 11…53. A sigla continua sendo o que a clínica cadastra.
+    expect(xml).toContain('<ans:ufExec>35</ans:ufExec>')
+    expect(xml).not.toContain('<ans:ufExec>SP</ans:ufExec>')
+  })
+
+  it('a face vira código de até 5 caracteres', () => {
+    // `denteFace` é st_texto5. "oclusal e mesial" tem 16 e era recusado.
+    const m = /<ans:denteFace>([^<]*)<\/ans:denteFace>/.exec(xml)
+    expect(m).not.toBeNull()
+    expect(m![1]!.length).toBeLessThanOrEqual(5)
+    expect(m![1]).toBe('MO')
+  })
+
+  it('a tabela do procedimento é a 22 (TUSS de procedimentos)', () => {
+    expect(xml).toContain('<ans:codigoTabela>22</ans:codigoTabela>')
   })
 
   it('tem epílogo com hash de 32 caracteres', () => {
@@ -168,8 +215,22 @@ describe('XML TISS', () => {
     const semTuss = xmlGuiaOdontologica({
       ...GUIA,
       itens: [{ ...GUIA.itens[0]!, codigoTuss: null }],
+      valorApresentado: '180.00',
     })
     expect(semTuss).toContain('<ans:codigoProcedimento></ans:codigoProcedimento>')
+  })
+
+  it('ESTOURA em vez de emitir XML sem o cadastro obrigatório', () => {
+    // Emitir com campo vazio produz documento que passa em parser e morre na
+    // operadora — semanas depois, sem dizer o motivo. Falhar aqui é mais barato.
+    expect(() => xmlGuiaOdontologica({ ...GUIA, cadastro: undefined })).toThrowError(/falta/)
+    expect(() =>
+      xmlGuiaOdontologica({ ...GUIA, cadastro: { ...GUIA.cadastro!, cnes: null } }),
+    ).toThrowError(/CNES/)
+  })
+
+  it('ESTOURA em UF sem código IBGE, em vez de emitir sigla', () => {
+    expect(() => xmlGuiaOdontologica({ ...GUIA, ufCro: 'XX' })).toThrowError(/IBGE/)
   })
 })
 
@@ -209,6 +270,28 @@ describe('conferência antes de enviar', () => {
     })
     // 0.1 + 0.2 em float não é 0.3; em centavos é.
     expect(r.filter((p) => p.includes('não fecha'))).toEqual([])
+  })
+
+  it('aponta o cadastro TISS que falta, um por um', () => {
+    // Estes campos são obrigatórios no XSD e o banco ainda não os guarda. Aparecem
+    // como pendência em vez de valor plausível, pelo mesmo motivo dos 13 códigos
+    // TUSS em branco: inventado passa no schema e volta como glosa.
+    const r = conferirAntesDeEnviar({ ...GUIA, cadastro: undefined }).join(' ')
+    expect(r).toContain('cadastro TISS')
+    expect(r).toContain('folha de conferência')
+
+    const parcial = conferirAntesDeEnviar({
+      ...GUIA,
+      cadastro: { ...GUIA.cadastro!, cnes: null, cbos: null },
+    }).join(' ')
+    expect(parcial).toContain('CNES')
+    expect(parcial).toContain('CBOS')
+    // E não reclama do que está preenchido.
+    expect(parcial).not.toContain('plano do beneficiário')
+  })
+
+  it('aponta UF que não é sigla conhecida', () => {
+    expect(conferirAntesDeEnviar({ ...GUIA, ufCro: 'XX' }).join(' ')).toContain('não é uma sigla')
   })
 
   it('guia sem item é apontada', () => {

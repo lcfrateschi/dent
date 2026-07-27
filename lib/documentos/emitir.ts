@@ -1,7 +1,8 @@
 import type { Ator } from '@/lib/authz/sessao'
+import { formatarCnpj } from '@/lib/domain/cnpj'
 import { db } from '@/lib/db'
 import { clinica, documento, orcamento, paciente, profissional, usuario } from '@/lib/db/schema'
-import { formatarCpf } from '@/lib/domain/cpf'
+import { formatarCpf, formatarTelefone } from '@/lib/domain/cpf'
 import { multiplicar } from '@/lib/domain/dinheiro'
 import {
   type DadosAtestado,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/domain/impressos'
 import { linhasDoOrcamento } from '@/lib/orcamento/consultas'
 import { reais } from '@/lib/ui/moeda'
+import { DA_CLINICA_ATUAL } from '@/lib/tenant/sql'
 import { eq } from 'drizzle-orm'
 import { anexarComAtor, type ResultadoDocumento } from './anexar'
 import { type Linha, gerarPdf } from './pdf'
@@ -63,7 +65,10 @@ async function dadosDaClinica(): Promise<{
       uf: clinica.uf,
     })
     .from(clinica)
-    .limit(1)
+    // O pior dos dez: sem filtro, o atestado do paciente sairia com o nome, o CNPJ
+    // e o CRO de outra clínica — documento com valor legal, assinado por quem não
+    // atendeu.
+    .where(DA_CLINICA_ATUAL)
 
   const nome = c?.nomeFantasia ?? c?.razaoSocial ?? 'Clínica'
   const endereco = [c?.logradouro, c?.numero, c?.bairro].filter(Boolean).join(', ')
@@ -74,12 +79,25 @@ async function dadosDaClinica(): Promise<{
     // Cidade vazia deixaria "  , 26 de julho de 2026" no rodapé — pior que um
     // marcador explícito de configuração pendente.
     cidade: c?.cidade ?? '(cidade não configurada)',
+    /**
+     * Telefone e CNPJ **formatados**, e isto só apareceu quando alguém rasterizou o
+     * PDF e olhou: o cabeçalho saía `Telefone: 1133334444` e
+     * `CNPJ: 11222333000181`, enquanto o CPF do paciente, três linhas abaixo, saía
+     * `127.933.468-10`.
+     *
+     * A inconsistência é o problema, não a estética. O atestado costuma ir para o RH
+     * da empresa e a receita para a farmácia; um documento com valor legal em que a
+     * clínica não formata o próprio CNPJ e formata o CPF do paciente parece gerado
+     * por engano. E os formatadores já existiam (`lib/domain/cpf.ts`,
+     * `lib/domain/cnpj.ts`) — não era decisão, era descuido que nenhum teste pega,
+     * porque `pdftotext` extrai o texto certo dos dois jeitos.
+     */
     linhasCabecalho: [
       nome,
       ...(endereco ? [endereco] : []),
       ...(local ? [local] : []),
-      ...(c?.telefone ? [`Telefone: ${c.telefone}`] : []),
-      ...(c?.cnpj ? [`CNPJ: ${c.cnpj}`] : []),
+      ...(c?.telefone ? [`Telefone: ${formatarTelefone(c.telefone)}`] : []),
+      ...(c?.cnpj ? [`CNPJ: ${formatarCnpj(c.cnpj)}`] : []),
     ],
   }
 }

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ArmazenamentoEmDisco } from './disco'
 import { ErroArmazenamento } from './tipos'
@@ -19,7 +19,16 @@ afterEach(async () => {
 })
 
 const CONTEUDO = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
-const CHAVE = `pacientes/${randomUUID()}/2026/${randomUUID()}.jpg`
+/**
+ * Chave no formato da Fase 17 em diante: `clinicas/<clinicaId>/…`.
+ *
+ * `salvar` recusa chave sem tenant (`CHAVE_SEM_TENANT`); `ler` aceita, porque
+ * `drizzle/0011` congela `documento.storage_key` e arquivo já gravado não muda de
+ * lugar. Os dois casos disso estão abaixo, juntos, para a assimetria não parecer
+ * descuido.
+ */
+const CLINICA = randomUUID()
+const CHAVE = `clinicas/${CLINICA}/pacientes/${randomUUID()}/2026/${randomUUID()}.jpg`
 
 describe('gravar e ler', () => {
   it('guarda o conteúdo e devolve tamanho e sha256', async () => {
@@ -37,8 +46,9 @@ describe('gravar e ler', () => {
   })
 
   it('cria os diretórios do caminho', async () => {
-    await store.salvar('a/b/c/d/e.jpg', CONTEUDO, 'image/jpeg')
-    expect(await store.existe('a/b/c/d/e.jpg')).toBe(true)
+    const funda = `clinicas/${CLINICA}/a/b/c/d/e.jpg`
+    await store.salvar(funda, CONTEUDO, 'image/jpeg')
+    expect(await store.existe(funda)).toBe(true)
   })
 
   it('aguenta arquivo grande sem corromper', async () => {
@@ -46,8 +56,9 @@ describe('gravar e ler', () => {
     const grande = new Uint8Array(5 * 1024 * 1024)
     for (let i = 0; i < grande.length; i++) grande[i] = (i * 31 + 7) % 256
 
-    const r = await store.salvar('g.bin', grande, 'application/octet-stream')
-    const lido = await store.ler('g.bin')
+    const rasa = `clinicas/${CLINICA}/g.bin`
+    const r = await store.salvar(rasa, grande, 'application/octet-stream')
+    const lido = await store.ler(rasa)
 
     expect(lido.byteLength).toBe(grande.byteLength)
     expect(createHash('sha256').update(lido).digest('hex')).toBe(r.sha256)
@@ -64,12 +75,44 @@ describe('gravar e ler', () => {
 
   it('ler o que não existe é NAO_ENCONTRADO, não erro genérico', async () => {
     try {
-      await store.ler('nao/existe.jpg')
+      await store.ler(`clinicas/${CLINICA}/nao/existe.jpg`)
       expect.unreachable('devia ter lançado')
     } catch (e) {
       expect(e).toBeInstanceOf(ErroArmazenamento)
       expect((e as ErroArmazenamento).codigo).toBe('NAO_ENCONTRADO')
     }
+  })
+
+  it('GRAVAR exige que a chave declare a clínica', async () => {
+    // Sem isto, um gerador novo que esquecesse o prefixo produziria arquivo que
+    // nenhuma exportação por clínica encontraria — e o erro apareceria meses
+    // depois, na hora de levar o prontuário de um cliente que está saindo.
+    const antiga = 'pacientes/00000000-0000-4000-8000-000000000001/2026/x.jpg'
+    try {
+      await store.salvar(antiga, CONTEUDO, 'image/jpeg')
+      expect.unreachable('devia ter lançado')
+    } catch (e) {
+      expect((e as ErroArmazenamento).codigo).toBe('CHAVE_SEM_TENANT')
+    }
+  })
+
+  it('LER aceita chave anterior à Fase 17 — e isso é decisão, não esquecimento', async () => {
+    // `drizzle/0011` congela `documento.storage_key`: renomear a chave de um
+    // documento já gravado exigiria desligar uma trava de prontuário. Então o
+    // arquivo antigo continua onde está, e a leitura continua funcionando. O
+    // detalhe que prova a assimetria: a mesma chave que `salvar` recusa, `ler`
+    // encontra.
+    const antiga = `pacientes/${randomUUID()}/2026/${randomUUID()}.jpg`
+    const alvo = join(raiz, antiga)
+    await mkdir(dirname(alvo), { recursive: true })
+    await writeFile(alvo, CONTEUDO)
+
+    expect(await store.existe(antiga)).toBe(true)
+    expect(Buffer.from(await store.ler(antiga)).equals(Buffer.from(CONTEUDO))).toBe(true)
+
+    // E ela continua sendo recusada na escrita, no mesmo teste, para a assimetria
+    // ficar visível a quem leia só um caso.
+    await expect(store.salvar(antiga, CONTEUDO, 'image/jpeg')).rejects.toThrow()
   })
 
   it('existe responde sem lançar', async () => {

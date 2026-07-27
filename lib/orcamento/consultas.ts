@@ -24,6 +24,7 @@ import {
   statusApresentado,
   valorParaOPaciente,
 } from '@/lib/domain/orcamento'
+import { DA_CLINICA_ATUAL, HOJE_NA_CLINICA } from '@/lib/tenant/sql'
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 
 /**
@@ -341,14 +342,29 @@ export async function cabecalhoDaClinica(): Promise<CabecalhoClinica | null> {
       cep: clinica.cep,
     })
     .from(clinica)
-    .limit(1)
+    .where(DA_CLINICA_ATUAL)
   return linha ?? null
 }
 
-/** "Hoje" no fuso da clínica — o vencimento é um dia civil, não um instante. */
+/**
+ * "Hoje" no fuso da clínica — o vencimento é um dia civil, não um instante.
+ *
+ * Resolvido pelo BANCO, com a mesma função que a trigger de validade de lote usa.
+ * Antes eram duas implementações da mesma regra — `diaLocalIso(new Date(), fuso)`
+ * aqui e `hoje_na_clinica()` no SQL — livres para divergir num fuso com horário de
+ * verão. E a leitura do fuso não tinha filtro de clínica: o fuso de outra clínica
+ * decidiria o que está vencido nesta.
+ *
+ * São 59 chamadas, e nenhuma precisou mudar.
+ */
 export async function hojeDaClinica(): Promise<string> {
-  const [linha] = await db.select({ fuso: clinica.fusoHorario }).from(clinica).limit(1)
-  return diaLocalIso(new Date(), linha?.fuso ?? FUSO_PADRAO)
+  const [linha] = await db.select({ hoje: HOJE_NA_CLINICA }).from(clinica).where(DA_CLINICA_ATUAL)
+  if (!linha) {
+    // Sem linha aqui não é "clínica não configurada": `app_clinica_id()` já teria
+    // estourado. É estado impossível, e um `?? FUSO_PADRAO` o esconderia.
+    throw new Error('Clínica do contexto não encontrada ao resolver a data de hoje.')
+  }
+  return linha.hoje
 }
 
 /**

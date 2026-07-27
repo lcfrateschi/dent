@@ -59,7 +59,15 @@ const COOKIE_PORTAL = 'facilident_portal'
 
 export default auth((req) => {
   const { pathname } = req.nextUrl
-  const logadoStaff = !!req.auth?.user
+  /**
+   * Token sem `clinicaId` não conta como sessão.
+   *
+   * É o token emitido antes da Fase 17. `atorAtual()` já o recusa, mas se o
+   * middleware o aceitasse a pessoa navegaria até a página para só então ser
+   * mandada ao login — e em rota de API receberia 500 em vez de 401. Recusar nas
+   * duas camadas mantém a resposta coerente.
+   */
+  const logadoStaff = !!req.auth?.user && !!req.auth.user.clinicaId
   // `MFA_DESABILITADO` vale só em desenvolvimento (ver lib/auth/mfa.ts). Aqui a
   // leitura é direta porque o middleware roda em Edge e não importa módulo Node.
   const mfaDesligado =

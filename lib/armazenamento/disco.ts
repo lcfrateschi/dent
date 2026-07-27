@@ -3,7 +3,7 @@ import { constants } from 'node:fs'
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { chaveEhSegura } from '@/lib/domain/arquivo'
-import { ErroArmazenamento, type ArquivoGuardado, type ProvedorArmazenamento } from './tipos'
+import { ErroArmazenamento, exigirTenantNaChave, type ArquivoGuardado, type ProvedorArmazenamento } from './tipos'
 
 /**
  * Armazenamento em disco.
@@ -52,6 +52,7 @@ export class ArmazenamentoEmDisco implements ProvedorArmazenamento {
   }
 
   async salvar(chave: string, conteudo: Uint8Array, _mime: string): Promise<ArquivoGuardado> {
+    exigirTenantNaChave(chave)
     const alvo = this.caminho(chave)
 
     if (await this.existe(chave)) {

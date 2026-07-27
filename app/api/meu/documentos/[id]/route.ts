@@ -5,6 +5,7 @@ import { formatoDoMime } from '@/lib/documentos/consultas'
 import { FORMATOS, nomeParaDownload } from '@/lib/domain/arquivo'
 import { documentoDoPortalParaDownload } from '@/lib/portal/consultas'
 import { sessaoAtual } from '@/lib/portal/sessao'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
 
 /**
  * Download de documento **pelo portal do paciente**.
@@ -35,6 +36,23 @@ export async function GET(
 ): Promise<Response> {
   const sessao = await sessaoAtual()
   if (!sessao) return new Response('Unauthorized', { status: 401 })
+
+  /**
+   * ── Por que o corpo desta rota roda dentro de `comContextoDeClinica` ──────
+   *
+   * Server Component tem o store por requisição do React para carregar o tenant
+   * (`lib/tenant/armazem.ts`). **Route handler não tem** — e o `enterWith` do
+   * `AsyncLocalStorage` feito dentro de `sessaoAtual()` não sobrevive ao `await` de volta
+   * para cá: o Next resume a continuação do handler com o contexto assíncrono
+   * capturado antes dela.
+   *
+   * O sintoma é 500 com "sem contexto de clínica" numa rota que autenticou
+   * corretamente. E num teste adversarial isso é pior que parece: **um 500 se
+   * confunde com isolamento**, quando é só erro. Daí o envelope explícito —
+   * `run()` garante o contexto para tudo o que roda dentro, sem depender de
+   * propagação.
+   */
+  return await comContextoDeClinica(sessao.clinicaId, async () => {
 
   const { id } = await params
   const doc = await documentoDoPortalParaDownload(sessao, id)
@@ -87,5 +105,6 @@ export async function GET(
       'content-security-policy': "default-src 'none'; sandbox",
       referrerPolicy: 'no-referrer',
     },
+  })
   })
 }

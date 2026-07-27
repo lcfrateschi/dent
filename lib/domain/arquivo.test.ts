@@ -5,10 +5,12 @@ import {
   LIMITE_BYTES,
   chaveArmazenamento,
   chaveEhSegura,
+  chaveTemTenant,
   detectarFormato,
   emMegabytes,
   nomeParaDownload,
   podeExibirEmbutido,
+  prefixoDaClinica,
   validarArquivo,
 } from './arquivo'
 import { ErroDominio } from './erros'
@@ -224,6 +226,7 @@ describe('validar arquivo', () => {
 
 describe('chave de armazenamento', () => {
   const p = {
+    clinicaId: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
     pacienteId: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
     documentoId: 'b1ffc99a-9c0b-4ef8-bb6d-6bb9bd380a11',
     extensao: 'jpg',
@@ -232,7 +235,7 @@ describe('chave de armazenamento', () => {
 
   it('não usa o nome enviado', () => {
     expect(chaveArmazenamento(p)).toBe(
-      'pacientes/3fa85f64-5717-4562-b3fc-2c963f66afa6/2026/b1ffc99a-9c0b-4ef8-bb6d-6bb9bd380a11.jpg',
+      'clinicas/7c9e6679-7425-40de-944b-e07fc1f90ae7/pacientes/3fa85f64-5717-4562-b3fc-2c963f66afa6/2026/b1ffc99a-9c0b-4ef8-bb6d-6bb9bd380a11.jpg',
     )
   })
 
@@ -250,6 +253,7 @@ describe('chave de armazenamento', () => {
   })
 
   it('recusa entrada que não é uuid ou extensão', () => {
+    expect(() => chaveArmazenamento({ ...p, clinicaId: '../etc' })).toThrowError(ErroDominio)
     expect(() => chaveArmazenamento({ ...p, pacienteId: '../etc' })).toThrowError(ErroDominio)
     expect(() => chaveArmazenamento({ ...p, documentoId: 'x' })).toThrowError(ErroDominio)
     expect(() => chaveArmazenamento({ ...p, extensao: '../sh' })).toThrowError(ErroDominio)
@@ -259,6 +263,35 @@ describe('chave de armazenamento', () => {
 
   it('toda chave que geramos é segura', () => {
     expect(chaveEhSegura(chaveArmazenamento(p))).toBe(true)
+  })
+
+  it('duas clínicas nunca compartilham prefixo', () => {
+    // É isto que torna possível exportar (LGPD) e restaurar UMA clínica. Sem o
+    // prefixo, os arquivos de todos os clientes moram na mesma árvore
+    // `pacientes/<uuid>/` e não há como levar só os de um.
+    const outra = chaveArmazenamento({ ...p, clinicaId: '00000000-0000-4000-8000-0000000000aa' })
+    expect(outra.startsWith(prefixoDaClinica('00000000-0000-4000-8000-0000000000aa'))).toBe(true)
+    expect(chaveArmazenamento(p).startsWith(prefixoDaClinica(p.clinicaId))).toBe(true)
+    expect(outra.startsWith(prefixoDaClinica(p.clinicaId))).toBe(false)
+  })
+
+  it('o prefixo declarado é o mesmo que o gerador usa', () => {
+    // Se `prefixoDaClinica` e `chaveArmazenamento` divergirem, a exportação por
+    // clínica varre um prefixo onde não há nada e sai com zero arquivos — sucesso
+    // aparente, backup vazio. Amarrar os dois num teste é o que impede isso.
+    expect(chaveArmazenamento(p).startsWith(prefixoDaClinica(p.clinicaId))).toBe(true)
+  })
+
+  it('chaveTemTenant separa chave nova de chave anterior à Fase 17', () => {
+    expect(chaveTemTenant(chaveArmazenamento(p))).toBe(true)
+    // A forma antiga, que existe em banco de antes da fase:
+    expect(chaveTemTenant('pacientes/3fa85f64-5717-4562-b3fc-2c963f66afa6/2026/x.jpg')).toBe(false)
+    // E ela continua SEGURA — são duas perguntas diferentes, e é por isso que os
+    // dois códigos de erro são diferentes.
+    expect(chaveEhSegura('pacientes/3fa85f64-5717-4562-b3fc-2c963f66afa6/2026/x.jpg')).toBe(true)
+    // Prefixo parecido não passa: precisa ser uuid de verdade.
+    expect(chaveTemTenant('clinicas/nao-e-uuid/pacientes/x/2026/y.jpg')).toBe(false)
+    expect(chaveTemTenant('clinicas//pacientes/x.jpg')).toBe(false)
   })
 })
 

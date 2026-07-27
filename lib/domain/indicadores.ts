@@ -264,6 +264,108 @@ export function ticketMedio(totalCentavos: number, pacientesDistintos: number): 
   return Math.round(totalCentavos / pacientesDistintos)
 }
 
+// ── Relacionamento (Fase 18) ─────────────────────────────────────────────────
+
+export interface EntradaConversao {
+  /** Orçamentos que saíram para o paciente no período. É a base. */
+  readonly enviados: number
+  readonly aprovados: number
+  readonly recusados: number
+  /** Enviados que venceram sem resposta. */
+  readonly expirados: number
+  /** Enviados que ainda estão dentro da validade — decisão pendente. */
+  readonly emAberto: number
+}
+
+export interface Conversao {
+  /** Aprovados sobre enviados. `null` sem orçamento enviado no período. */
+  readonly taxa: number | null
+  /**
+   * Aprovados sobre os que já foram DECIDIDOS (aprovado + recusado + expirado).
+   *
+   * As duas medidas existem pelo mesmo motivo que ocupação tem duas: um mês em
+   * que metade dos orçamentos ainda está em aberto tem conversão baixa que não
+   * significa nada. `taxa` responde "quanto do que ofereci virou tratamento?";
+   * `taxaDecidida` responde "quando o paciente decide, com que frequência é sim?".
+   * Só a segunda é comparável entre meses de volume diferente.
+   */
+  readonly taxaDecidida: number | null
+  readonly enviados: number
+  readonly aprovados: number
+  readonly recusados: number
+  readonly expirados: number
+  readonly emAberto: number
+}
+
+/**
+ * Conversão de orçamento — o indicador que faltava e que ninguém tinha.
+ *
+ * **Expirado conta como não-conversão, e é assim de propósito.** A tentação é
+ * excluí-lo da base ("não foi recusado, só não respondeu") e é exatamente o que
+ * torna o indicador inútil: orçamento que morre de silêncio é o modo de perda mais
+ * comum de uma clínica, e o único que a fila de relacionamento existe para atacar.
+ * Escondê-lo do número faria a conversão parecer boa justamente onde ela é ruim.
+ */
+export function conversaoDeOrcamento(e: EntradaConversao): Conversao {
+  const decididos = e.aprovados + e.recusados + e.expirados
+  return {
+    taxa: e.enviados === 0 ? null : arredondar((e.aprovados / e.enviados) * 100),
+    taxaDecidida: decididos === 0 ? null : arredondar((e.aprovados / decididos) * 100),
+    enviados: e.enviados,
+    aprovados: e.aprovados,
+    recusados: e.recusados,
+    expirados: e.expirados,
+    emAberto: e.emAberto,
+  }
+}
+
+export interface EntradaRecuperacao {
+  /** Tarefas de um tipo criadas no período. Base. */
+  readonly criadas: number
+  /** Tarefas que terminaram em `resolvida` — o paciente voltou à agenda. */
+  readonly resolvidas: number
+  /** Terminaram em `dispensada` — "não insista". */
+  readonly dispensadas: number
+  /** Ainda abertas ou em andamento. */
+  readonly pendentes: number
+}
+
+export interface Recuperacao {
+  /** Resolvidas sobre criadas. `null` sem tarefa no período. */
+  readonly taxa: number | null
+  /**
+   * Resolvidas sobre as que já foram TRABALHADAS (resolvidas + dispensadas).
+   *
+   * Mesma razão da conversão: fila com muita tarefa pendente tem taxa baixa que
+   * mede a recepção não ter tido tempo, não o paciente não ter voltado.
+   */
+  readonly taxaTrabalhada: number | null
+  readonly criadas: number
+  readonly resolvidas: number
+  readonly dispensadas: number
+  readonly pendentes: number
+}
+
+/**
+ * Recuperação de uma fila: de tudo que a fila apontou, quanto virou paciente de volta.
+ *
+ * Serve para falta, para retorno e para orçamento sem resposta — a forma é a
+ * mesma. **`dispensada` não conta como sucesso nem como fracasso da recepção**: é
+ * o paciente exercendo o direito de não querer, e uma clínica cujo indicador
+ * penaliza dispensar é uma clínica que vai parar de dispensar e passar a insistir.
+ */
+export function recuperacaoDaFila(e: EntradaRecuperacao): Recuperacao {
+  const trabalhadas = e.resolvidas + e.dispensadas
+  return {
+    taxa: e.criadas === 0 ? null : arredondar((e.resolvidas / e.criadas) * 100),
+    taxaTrabalhada: trabalhadas === 0 ? null : arredondar((e.resolvidas / trabalhadas) * 100),
+    criadas: e.criadas,
+    resolvidas: e.resolvidas,
+    dispensadas: e.dispensadas,
+    pendentes: e.pendentes,
+  }
+}
+
 // ── Formatação ───────────────────────────────────────────────────────────────
 
 function arredondar(n: number): number {

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  foreignKey,
   check,
   index,
   jsonb,
@@ -19,6 +20,7 @@ import {
   tipoMensagemEnum,
 } from './enums'
 import { paciente } from './pacientes'
+import { clinicaId } from './tenant'
 
 /**
  * Fila de saída e caixa de entrada do WhatsApp.
@@ -46,14 +48,11 @@ import { paciente } from './pacientes'
 export const mensagemWhatsapp = pgTable(
   'mensagem_whatsapp',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
-    pacienteId: uuid('paciente_id')
-      .notNull()
-      .references(() => paciente.id, { onDelete: 'restrict' }),
+    pacienteId: uuid('paciente_id').notNull(),
     /** Lembrete pertence a um atendimento; aviso geral, não. */
-    agendamentoId: uuid('agendamento_id').references(() => agendamento.id, {
-      onDelete: 'restrict',
-    }),
+    agendamentoId: uuid('agendamento_id'),
     tipo: tipoMensagemEnum('tipo').notNull(),
 
     /**
@@ -94,6 +93,16 @@ export const mensagemWhatsapp = pgTable(
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'mensagem_whatsapp_agendamento_id_agendamento_id_fk',
+      columns: [t.agendamentoId, t.clinicaId],
+      foreignColumns: [agendamento.id, agendamento.clinicaId],
+    }).onDelete('restrict'),
+    foreignKey({
+      name: 'mensagem_whatsapp_paciente_id_paciente_id_fk',
+      columns: [t.pacienteId, t.clinicaId],
+      foreignColumns: [paciente.id, paciente.clinicaId],
+    }).onDelete('restrict'),
     // O índice que o worker usa para reivindicar: pendentes já vencidas.
     index('mensagem_pendente_idx')
       .on(t.agendadoPara)
@@ -138,6 +147,7 @@ export const mensagemWhatsapp = pgTable(
 export const respostaWhatsapp = pgTable(
   'resposta_whatsapp',
   {
+    clinicaId: clinicaId(),
     id: uuid('id').primaryKey().defaultRandom(),
     /** `wamid` da mensagem recebida. A trava contra reentrega de webhook. */
     idExterno: text('id_externo').notNull().unique(),

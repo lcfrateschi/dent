@@ -15,6 +15,7 @@ import {
   textoLembrete,
 } from '@/lib/domain/textoMensagem'
 import { ehCelular, paraE164 } from '@/lib/domain/whatsapp'
+import { DA_CLINICA_ATUAL } from '@/lib/tenant/sql'
 import { and, eq, gte, lt, lte, sql } from 'drizzle-orm'
 
 /**
@@ -146,8 +147,12 @@ async function nomeDaClinica(ex: Executor): Promise<string> {
   const [c] = await ex
     .select({ fantasia: clinica.nomeFantasia, razao: clinica.razaoSocial })
     .from(clinica)
-    .limit(1)
-  return c?.fantasia ?? c?.razao ?? 'sua clínica'
+    .where(DA_CLINICA_ATUAL)
+  // O `?? 'sua clínica'` continua, e só para o nome fantasia ausente — que é
+  // cadastro incompleto, não erro. O que saiu foi a possibilidade de mandar ao
+  // paciente o nome de OUTRA clínica.
+  if (!c) throw new Error('Clínica do contexto não encontrada ao montar a mensagem.')
+  return c.fantasia ?? c.razao ?? 'sua clínica'
 }
 
 /**

@@ -36,7 +36,10 @@ import {
   execucoesSemBaixa,
   proporBaixaComAtor,
 } from './baixaDaExecucao'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
+import { desligarTriggersDeAplicacao, religarTriggersDeAplicacao } from '@/lib/demo/triggers'
+import { comContextoDeClinica } from '@/lib/tenant/contexto'
+import { clinicaDaExecucao, idDaPrimeiraClinica } from '@/lib/demo/clinicaDaDemo'
 
 /**
  * Demonstração da Fase 14 contra o Postgres.
@@ -90,7 +93,11 @@ async function main(): Promise<void> {
         senhaHash: await gerarHashSenha('x'.repeat(20)),
         perfil: 'dentista',
       })
-      .returning({ id: usuario.id })
+      // `clinicaId` no returning: o tenant do Ator é o do USUÁRIO, lido da linha que
+      // acabou de nascer. Ler de `clinicaAtual()` compilaria igual e seria o andaime
+      // — e num banco com duas clínicas montaria um ator cuja clínica não é a do seu
+      // próprio usuário, que é precisamente o que a sessão real nunca faz.
+      .returning({ id: usuario.id, clinicaId: usuario.clinicaId })
     const [novoProf] = await tx
       .insert(profissional)
       .values({ usuarioId: novoUsuario!.id, cro: `E${t % 100000}`, ufCro: 'SP' })
@@ -100,6 +107,7 @@ async function main(): Promise<void> {
 
   const ator: Ator = {
     usuarioId: u!.id,
+    clinicaId: u!.clinicaId,
     nome: `${MARCA} Dra. Rita`,
     email: 'est@local',
     perfil: 'dentista',
@@ -344,10 +352,22 @@ async function main(): Promise<void> {
 
     // ── 8. Rastreabilidade: lote recolhido → paciente ───────────────────────
     passo(8, 'Implante consumido numa execução: o recolhimento do lote responde o paciente')
+    /*
+     * O filtro por `clinica_id` não é redundante enquanto o app conecta como dono
+     * das tabelas: **dono ignora política de RLS**, então esta consulta vê o
+     * catálogo de TODAS as clínicas. Sem o filtro ela devolvia o procedimento de uma
+     * clínica enquanto o script gravava na outra, e o FK composto da `drizzle/0023`
+     * recusava o `item_plano` — que é o banco fazendo o trabalho certo.
+     *
+     * Quando a aplicação passar a conectar com a role sem BYPASSRLS, a política
+     * cobrirá isso sozinha. Até então, o filtro é o que existe.
+     */
     const [proc] = await db
       .select({ id: procedimento.id, nome: procedimento.nome })
       .from(procedimento)
-      .where(eq(procedimento.codigo, 'IMP-001'))
+      .where(
+        and(eq(procedimento.codigo, 'IMP-001'), eq(procedimento.clinicaId, clinicaDaExecucao())),
+      )
       .limit(1)
 
     const [plano] = await db
@@ -574,9 +594,16 @@ async function main(): Promise<void> {
 /**
  * Remove o que a demonstração criou.
  *
- * `session_replication_role = 'replica'` desliga as triggers de usuário na
- * sessão, o que é a ÚNICA forma de apagar `movimento_estoque` — que é append-only
- * de propósito. Vale para o script de demonstração; a aplicação nunca faz isso.
+ * `movimento_estoque` é append-only de propósito, então apagar exige desligar a
+ * trigger. `lib/demo/triggers.ts` desliga só as de APLICAÇÃO e religa antes do
+ * commit — as de FK ficam de pé.
+ *
+ * Esta função é a origem de um estrago que vale registrar: com
+ * `session_replication_role = 'replica'`, que também desliga FK, ela apagou uma
+ * `execucao` e deixou 5 `movimento_estoque` órfãos apontando para ela. O banco de
+ * desenvolvimento ficou num estado em que a `drizzle/0023` não conseguia criar FK
+ * composto, e o sintoma apareceu longe daqui. Vale para o script de demonstração;
+ * a aplicação nunca faz isso.
  */
 async function limpar(
   pacienteId: string,
@@ -586,7 +613,11 @@ async function limpar(
   const c = await pool.connect()
   try {
     await c.query('begin')
-    await c.query("set local session_replication_role = 'replica'")
+    // Desliga só as triggers de APLICAÇÃO — as de FK ficam de pé. O
+    // `session_replication_role` que estava aqui desligava as duas, e já deixou
+    // 5 linhas órfãs em movimento_estoque, o que derrubou a 0023. Ver
+    // lib/demo/triggers.ts.
+    const tabelasDesligadas = await desligarTriggersDeAplicacao(c)
     await c.query('delete from movimento_estoque where material_id = any($1::uuid[])', [materiaisIds])
     await c.query('delete from lote_material where material_id = any($1::uuid[])', [materiaisIds])
     await c.query('delete from insumo_procedimento where material_id = any($1::uuid[])', [materiaisIds])
@@ -607,6 +638,9 @@ async function limpar(
     await c.query('delete from paciente where id = $1', [pacienteId])
     await c.query('delete from profissional where usuario_id = $1', [usuarioId])
     await c.query('delete from usuario where id = $1', [usuarioId])
+    // ANTES do commit: `disable trigger` é DDL — comitar desligado deixaria o
+    // prontuário editável para sempre, em silêncio.
+    await religarTriggersDeAplicacao(c, tabelasDesligadas)
     await c.query('commit')
     console.log('\nDados da demonstração removidos.')
   } catch (e) {
@@ -617,7 +651,21 @@ async function limpar(
   }
 }
 
-main()
+/**
+ * O contexto de clínica é aberto AQUI, envolvendo o `main()` inteiro.
+ *
+ * Script de linha de comando não tem sessão de onde herdar o tenant, e desde a
+ * `drizzle/0022` toda escrita depende de `app.clinica_id` — `app_clinica_id()`
+ * estoura sem ele, de propósito, para "esqueci o contexto" não virar linha gravada
+ * na clínica errada.
+ *
+ * Envolver no ponto de entrada, e não dentro de `main()`, é de propósito: qualquer
+ * função que `main()` chame, hoje ou amanhã, herda o contexto pelo
+ * `AsyncLocalStorage`. Espalhar `comContextoDeClinica` por dentro deixaria brecha
+ * na próxima função acrescentada.
+ */
+idDaPrimeiraClinica()
+  .then((clinicaId) => comContextoDeClinica(clinicaId, main))
   .then(async () => {
     await pool.end()
     process.exit(falhas > 0 ? 1 : 0)

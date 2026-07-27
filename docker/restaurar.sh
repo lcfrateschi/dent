@@ -164,22 +164,99 @@ if [ "$triggers" -lt 20 ] || [ "$excludes" -lt 2 ]; then
   falhou=1
 fi
 
-# Prova de fogo: a trigger de append-only da evolução ainda recusa UPDATE?
-recusou="$(docker compose exec -T "$SERVICO_DB" psql -U "$USUARIO" -d "$ALVO" -tAc \
-  "do \$\$ begin
+# ── A prova de fogo do append-only, e por que ela é escrita assim ───────────
+#
+# A versão anterior fazia `update evolucao set texto = texto || ' X'` e tinha DOIS
+# defeitos, os dois descobertos ao restaurar um banco cujas evoluções eram todas
+# rascunho:
+#
+#  1. **Ela testava a regra errada.** `evolucao_append_only()` só bloqueia UPDATE
+#     quando `assinado_em IS NOT NULL` — evolução em RASCUNHO pode ser editada, de
+#     propósito. Então num banco sem evolução assinada o probe recebia "UPDATE 1",
+#     concluía que a trigger não tinha voltado, e **reprovava um backup bom**. Ele
+#     só passa hoje porque o banco de desenvolvimento tem 1 de 1 evolução assinada:
+#     é verde por sorte do dado, não por invariante.
+#  2. **Ela não desfazia o UPDATE.** O bloco `begin/exception` só desfaz quando dá
+#     exceção. No caminho em que a trigger *permite* (rascunho), o UPDATE
+#     **comitava** — e em `--para-valer`, que roda contra produção, isso acrescenta
+#     " X" ao texto de toda evolução não assinada. Um script de conferência de
+#     backup corrompendo prontuário é o pior tipo de bug possível aqui.
+#
+# A versão abaixo corrige as duas coisas:
+#   • testa a imutabilidade de `paciente_id`, que a trigger recusa em QUALQUER
+#     evolução, assinada ou não — a invariante vale para todo dado;
+#   • confere a MENSAGEM do erro, não só "deu erro": um FK violado ou uma coluna
+#     inexistente também "recusariam", e passar por esse motivo é o padrão de falso
+#     verde que já apareceu quatro vezes neste projeto;
+#   • roda dentro de `begin; … rollback;`, então não existe caminho em que o probe
+#     escreva. As NOTICEs chegam ao cliente antes do rollback.
+saida_probe="$(docker compose exec -T "$SERVICO_DB" psql -U "$USUARIO" -d "$ALVO" -tAq -c "
+     begin;
+     do \$\$
+     declare v_id uuid; v_msg text;
      begin
-       update evolucao set texto = texto || ' X';
-       raise notice 'ACEITOU';
-     exception when others then
-       raise notice 'RECUSOU';
-     end;
-   end \$\$;" 2>&1 | grep -c 'RECUSOU' || true)"
-if [ "$(docker compose exec -T "$SERVICO_DB" psql -U "$USUARIO" -d "$ALVO" -tAc 'select count(*) from evolucao' | tr -d '\r')" = "0" ]; then
-  echo "     · sem evoluções para testar o append-only (banco novo)"
-elif [ "$recusou" -ge 1 ]; then
-  echo "     ✓ o append-only da evolução continua valendo no banco restaurado"
+       select id into v_id from evolucao  limit 1;
+       if v_id is null then raise notice 'SEM-EVOLUCAO'; return; end if;
+       begin
+         update evolucao set paciente_id = gen_random_uuid() where id = v_id;
+         raise notice 'ACEITOU';
+       exception when others then
+         v_msg := SQLERRM;
+         if v_msg like '%imutav%' or v_msg like '%imutáv%' then
+           raise notice 'RECUSOU-CERTO';
+         else
+           raise notice 'RECUSOU-OUTRO-MOTIVO: %', v_msg;
+         end if;
+       end;
+     end \$\$;
+     rollback;" 2>&1)"
+
+case "$saida_probe" in
+  *SEM-EVOLUCAO*)  echo "     · sem evoluções para testar o append-only (banco novo)" ;;
+  *RECUSOU-CERTO*) echo "     ✓ o append-only da evolução continua valendo no banco restaurado" ;;
+  *ACEITOU*)
+    echo "     ✗ a evolução restaurada aceita alterar paciente_id — a trigger não voltou"
+    falhou=1 ;;
+  *)
+    echo "     ✗ o probe do append-only falhou por outro motivo: $saida_probe"
+    echo "       (recusar pelo motivo errado não prova nada)"
+    falhou=1 ;;
+esac
+
+# ── O tenant sobreviveu ao dump? ─────────────────────────────────────────────
+#
+# Um dump que perdesse `clinica_id`, ou as políticas de RLS, restauraria um banco
+# que FUNCIONA e não isola nada: as consultas voltariam a devolver linha de
+# qualquer clínica, sem erro e sem log. É a pior forma de restauração ruim, porque
+# a conferência de contagens passa e ninguém desconfia.
+#
+# As três perguntas, em ordem de gravidade: a coluna existe em toda tabela de
+# dados, as políticas voltaram, e `FORCE ROW LEVEL SECURITY` continua ligado —
+# sem o FORCE o dono das tabelas fica isento e a política é decorativa.
+sem_tenant="$(docker compose exec -T "$SERVICO_DB" psql -U "$USUARIO" -d "$ALVO" -tAc \
+  "select coalesce(string_agg(c.relname, ', ' order by c.relname), '')
+     from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where c.relkind = 'r' and n.nspname = 'public'
+      and c.relname not in ('clinica', 'dente', '__drizzle_migrations')
+      and not exists (select 1 from pg_attribute a
+                       where a.attrelid = c.oid and a.attname = 'clinica_id'
+                         and not a.attisdropped)" | tr -d '\r')"
+politicas="$(docker compose exec -T "$SERVICO_DB" psql -U "$USUARIO" -d "$ALVO" -tAc \
+  "select count(*) from pg_policy" | tr -d '\r')"
+com_force="$(docker compose exec -T "$SERVICO_DB" psql -U "$USUARIO" -d "$ALVO" -tAc \
+  "select count(*) from pg_class where relforcerowsecurity" | tr -d '\r')"
+
+if [ -n "$sem_tenant" ]; then
+  echo "     ✗ tabelas SEM clinica_id no banco restaurado: $sem_tenant"
+  echo "       o dump perdeu o tenant — o banco restaurado não isola clínicas"
+  falhou=1
 else
-  echo "     ✗ a evolução restaurada aceita UPDATE — a trigger não voltou"
+  echo "     ✓ clinica_id presente em todas as tabelas de dados"
+fi
+
+echo "     ✓ $politicas política(s) de RLS, $com_force tabela(s) com FORCE"
+if [ "$politicas" -lt 40 ] || [ "$com_force" -lt 40 ]; then
+  echo "     ✗ faltam políticas de RLS ou o FORCE — dono de tabela voltaria a ignorar o isolamento"
   falhou=1
 fi
 

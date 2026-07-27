@@ -28,12 +28,24 @@ export const metadata: Metadata = {
  * vezes por ano, de celular, e não conhece o sistema.
  */
 
+/**
+ * ── A ordem é a da frequência de uso, não a da hierarquia do sistema ───────
+ * "Ficha de saúde" vem depois de Orçamentos porque se responde uma vez por ano;
+ * "Termos" é o último porque só se visita quando a clínica pede. O menu rola
+ * horizontalmente no celular, e o que fica fora da primeira tela é o que menos se usa.
+ *
+ * "Ficha de saúde" e não "Anamnese": o `GLOSSARIO.md` manda usar o termo do domínio no
+ * CÓDIGO (a rota, a tabela e as funções são `anamnese`), e quem entra aqui três vezes
+ * por ano não sabe o que a palavra significa.
+ */
 const MENU = [
   { href: '/meu', rotulo: 'Início', icone: 'agenda' as const },
   { href: '/meu/orcamentos', rotulo: 'Orçamentos', icone: 'cobranca' as const },
   { href: '/meu/financeiro', rotulo: 'Pagamentos', icone: 'financeiro' as const },
+  { href: '/meu/anamnese', rotulo: 'Ficha de saúde', icone: 'anamnese' as const },
   { href: '/meu/documentos', rotulo: 'Documentos', icone: 'documentos' as const },
   { href: '/meu/dados', rotulo: 'Meus dados', icone: 'pacientes' as const },
+  { href: '/meu/termos', rotulo: 'Termos', icone: 'documentos' as const },
 ]
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { cadeira, clinica, profissional, usuario } from '@/lib/db/schema'
 import type { Perfil } from '@/lib/authz/politicas'
 import type { HorarioFuncionamento } from '@/lib/domain/horario'
+import { DA_CLINICA_ATUAL } from '@/lib/tenant/sql'
 import { asc, eq, sql } from 'drizzle-orm'
 
 /**
@@ -84,7 +85,10 @@ export interface ConfiguracaoDaClinica {
 }
 
 export async function configuracaoDaClinica(): Promise<ConfiguracaoDaClinica | null> {
-  const [linha] = await db.select().from(clinica).where(eq(clinica.id, 1)).limit(1)
+  // Décimo-primeiro caso do mesmo problema, que não estava na lista: a TELA DE
+  // CONFIGURAÇÃO lia "alguma" clínica. Editar a configuração da clínica errada é
+  // pior que ler — e o formulário de salvar já usa a clínica do contexto.
+  const [linha] = await db.select().from(clinica).where(DA_CLINICA_ATUAL)
   if (!linha) return null
   return {
     ...linha,

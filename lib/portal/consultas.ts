@@ -2,6 +2,10 @@ import { registrarDoPaciente } from '@/lib/auditoria/registrar'
 import { db } from '@/lib/db'
 import {
   agendamento,
+  anamnese,
+  listaEspera,
+  procedimento,
+  regraAutoatendimento,
   cobranca,
   consentimento,
   documento,
@@ -13,8 +17,15 @@ import {
   profissional,
   usuario,
 } from '@/lib/db/schema'
+import {
+  REGRA_PADRAO,
+  type RegraAutoatendimento,
+  idadeEmAnos,
+  janelaDeDias,
+} from '@/lib/domain/autoatendimento'
+import { horariosLivres } from '@/lib/agenda/consultas'
 import { somar, subtrair } from '@/lib/domain/dinheiro'
-import { FUSO_PADRAO } from '@/lib/domain/fuso'
+import { FUSO_PADRAO, diaLocalIso } from '@/lib/domain/fuso'
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import type { SessaoPortal } from './sessao'
 
@@ -416,4 +427,303 @@ export const FUSO_DO_PORTAL = FUSO_PADRAO
  */
 function somaDeStrings(valores: readonly string[]): string {
   return valores.length === 0 ? '0.00' : somar(...valores)
+}
+
+// ── Autoatendimento (Fase 19) ────────────────────────────────────────────────
+//
+// A regra do arquivo continua valendo aqui: nenhuma função abaixo aceita
+// `pacienteId`. As que precisam do paciente o tiram de `sessao.pacienteId`.
+
+/** A configuração do autoatendimento desta clínica. */
+export async function regraDoAutoatendimento(): Promise<RegraAutoatendimento & {
+  readonly termoDeAtendimento: string | null
+  readonly versaoTermo: string
+}> {
+  const [linha] = await db
+    .select({
+      ativo: regraAutoatendimento.ativo,
+      antecedenciaMinimaHoras: regraAutoatendimento.antecedenciaMinimaHoras,
+      antecedenciaMaximaDias: regraAutoatendimento.antecedenciaMaximaDias,
+      maximoFuturosPorPaciente: regraAutoatendimento.maximoFuturosPorPaciente,
+      termoDeAtendimento: regraAutoatendimento.termoDeAtendimento,
+      versaoTermo: regraAutoatendimento.versaoTermo,
+    })
+    .from(regraAutoatendimento)
+    // Sem filtro explícito: a política de RLS já restringe à clínica do contexto, e
+    // a tabela tem uma linha por clínica. Um `where` aqui seria redundante sob a
+    // role da aplicação — mas ATENÇÃO: script rodando como DONO não tem política, e
+    // por isso `lib/autoatendimento/demonstrar.ts` filtra explicitamente.
+    .limit(1)
+
+  /**
+   * Sem linha, devolve o padrão DESLIGADO — nunca "ligado por omissão".
+   *
+   * A `drizzle/0031` cria a linha para toda clínica existente e o onboarding a cria
+   * para as novas, então este caminho é teórico. Ele existe porque a alternativa
+   * (estourar) derrubaria a tela inicial do portal por causa de uma configuração
+   * ausente, e a alternativa oposta (assumir ligado) abriria a agenda.
+   */
+  if (!linha) {
+    return { ...REGRA_PADRAO, termoDeAtendimento: null, versaoTermo: 'v1' }
+  }
+  return linha
+}
+
+/** Procedimentos que o paciente pode marcar sozinho. */
+export async function procedimentosDoPortal(): Promise<
+  readonly { readonly id: string; readonly nome: string; readonly duracaoMinutos: number }[]
+> {
+  return db
+    .select({
+      id: procedimento.id,
+      nome: procedimento.nome,
+      duracaoMinutos: procedimento.duracaoMinutos,
+    })
+    .from(procedimento)
+    .where(and(eq(procedimento.ativo, true), eq(procedimento.permiteAutoagendamento, true)))
+    .orderBy(asc(procedimento.nome))
+}
+
+/** Quantos agendamentos futuros ativos o paciente já tem — entrada do teto. */
+export async function meusFuturosAtivos(sessao: SessaoPortal): Promise<number> {
+  const [linha] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(agendamento)
+    .where(
+      and(
+        eq(agendamento.pacienteId, sessao.pacienteId),
+        sql`${agendamento.inicio} > now()`,
+        sql`${agendamento.status} in ('agendado','confirmado')`,
+      ),
+    )
+  return linha?.n ?? 0
+}
+
+/**
+ * Profissionais que atendem, para o paciente escolher.
+ *
+ * Só nome e id. **Nada de especialidade, CRO ou agenda** — o paciente escolhe entre
+ * pessoas, não entre currículos, e cada campo extra aqui é um campo que a tela de um
+ * paciente passa a expor sobre um funcionário.
+ */
+export async function profissionaisDoPortal(): Promise<
+  readonly { readonly id: string; readonly nome: string }[]
+> {
+  return db
+    .select({ id: profissional.id, nome: usuario.nome })
+    .from(profissional)
+    .innerJoin(usuario, eq(usuario.id, profissional.usuarioId))
+    .where(and(eq(profissional.ativo, true), eq(usuario.ativo, true)))
+    .orderBy(asc(usuario.nome))
+}
+
+/**
+ * A grade que o paciente vê num dia.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ *  ── Isto viola a decisão 2 ("nunca compartilhe query entre staff e portal")? ──
+ *  **Não, e vale ser explícito porque parece que sim.**
+ *
+ *  A decisão está escrita com o motivo dela: *"as consultas do staff recebem
+ *  `pacienteId` por parâmetro (correto lá: a recepção escolhe o paciente). Reusar
+ *  uma delas aqui seria trazer esse parâmetro para dentro do portal, e é exatamente
+ *  ali que nasce o vazamento."*
+ *
+ *  `horariosLivres` não tem `pacienteId` na assinatura, não lê paciente nenhum e não
+ *  devolve dado de paciente — ela recebe dia, profissional e duração, e devolve
+ *  intervalos vazios. Não há por onde um id da URL decidir de quem é o dado, porque
+ *  não há dado de ninguém no retorno.
+ *
+ *  A regra proíbe compartilhar consulta **de dado de paciente**. Reescrever a grade
+ *  aqui não aumentaria isolamento nenhum e criaria uma segunda implementação de
+ *  horário de funcionamento, que divergiria no primeiro feriado.
+ *
+ *  ── Os dois motivos para reusar, e o segundo é de segurança ────────────────
+ *
+ *   1. aquela função já respeita horário de funcionamento, bloqueio de agenda e a
+ *      EXCLUDE constraint. Uma segunda implementação divergiria no primeiro
+ *      feriado;
+ *   2. ela devolve **apenas os livres** — `{hora, inicio, fim}`. Não existe caminho
+ *      em que "ocupado por Fulano" chegue aqui, porque a informação não sai de lá.
+ *      Se um dia alguém acrescentar `ocupadoPor` ao retorno dela para a tela da
+ *      recepção, este ponto passa a precisar de filtro — e é por isso que o teste
+ *      por HTTP procura nome e id de terceiro no HTML.
+ *
+ *  Exceção consciente à regra do arquivo: `dia`, `profissionalId` e
+ *  `procedimentoId` vêm de fora. São escolhas do paciente na tela, não identidade —
+ *  o que a regra proíbe é `pacienteId` por parâmetro, porque é ele que decide de
+ *  QUEM é o dado.
+ * ══════════════════════════════════════════════════════════════════════════
+ */
+export async function horariosParaOPaciente(
+  sessao: SessaoPortal,
+  entrada: { readonly diaIso: string; readonly profissionalId: string; readonly procedimentoId: string },
+  agora: Date = new Date(),
+): Promise<
+  | { readonly ok: true; readonly horarios: readonly { readonly hora: string; readonly inicio: Date }[] }
+  | { readonly ok: false; readonly mensagem: string }
+> {
+  const regra = await regraDoAutoatendimento()
+  if (!regra.ativo) {
+    return { ok: false, mensagem: 'Esta clínica ainda não abriu o agendamento pelo portal.' }
+  }
+
+  const [proc] = await db
+    .select({ duracao: procedimento.duracaoMinutos, liberado: procedimento.permiteAutoagendamento })
+    .from(procedimento)
+    .where(and(eq(procedimento.id, entrada.procedimentoId), eq(procedimento.ativo, true)))
+    .limit(1)
+
+  if (!proc || !proc.liberado) {
+    return {
+      ok: false,
+      mensagem: 'Este atendimento precisa ser combinado com a clínica. Fale com a recepção.',
+    }
+  }
+
+  const livres = await horariosLivres({
+    diaIso: entrada.diaIso,
+    profissionalId: entrada.profissionalId,
+    duracaoMin: proc.duracao,
+  })
+
+  /**
+   * A janela da regra é aplicada AQUI, sobre os horários que a agenda considera
+   * livres — a grade não pode oferecer o que `avaliarPedido` vai recusar. Oferecer e
+   * depois recusar é a pior combinação: o paciente escolhe e leva um "não" que
+   * parece defeito do sistema.
+   */
+  const { de, ate } = janelaDeDias(regra, agora)
+  const dentroDaJanela = livres.filter((h) => h.inicio >= de && h.inicio <= ate)
+
+  await registrarAcessoDoPortal(sessao, 'agendar', { dia: entrada.diaIso })
+
+  // Só `hora` e `inicio`. `fim` sairia daqui sem uso na tela e permitiria inferir a
+  // duração — que é o procedimento — de quem marcou antes.
+  return { ok: true, horarios: dentroDaJanela.map((h) => ({ hora: h.hora, inicio: h.inicio })) }
+}
+
+/** Minha posição na lista de espera. */
+export async function minhaListaDeEspera(sessao: SessaoPortal) {
+  return db
+    .select({
+      id: listaEspera.id,
+      turno: listaEspera.turno,
+      validoAte: listaEspera.validoAte,
+      situacao: listaEspera.situacao,
+      criadoEm: listaEspera.criadoEm,
+      procedimentoNome: procedimento.nome,
+    })
+    .from(listaEspera)
+    .leftJoin(procedimento, eq(procedimento.id, listaEspera.procedimentoId))
+    .where(and(eq(listaEspera.pacienteId, sessao.pacienteId), eq(listaEspera.situacao, 'aguardando')))
+    .orderBy(desc(listaEspera.criadoEm))
+}
+
+/**
+ * A anamnese que o paciente respondeu, e se um profissional já conferiu.
+ *
+ * Devolve `conferidaEm` de propósito: o paciente vê "enviado, aguardando conferência
+ * da clínica". Sem isso ele acha que respondeu e está resolvido — e no dia da
+ * consulta a auxiliar pede tudo de novo, o que faz o recurso parecer inútil.
+ */
+export async function minhaAnamnese(sessao: SessaoPortal) {
+  const [linha] = await db
+    .select({
+      id: anamnese.id,
+      versao: anamnese.versao,
+      origem: anamnese.origem,
+      preenchidaEm: anamnese.preenchidaEm,
+      conferidaEm: anamnese.conferidaEm,
+    })
+    .from(anamnese)
+    .where(eq(anamnese.pacienteId, sessao.pacienteId))
+    .orderBy(desc(anamnese.versao))
+    .limit(1)
+  return linha ?? null
+}
+
+/**
+ * As RESPOSTAS da última anamnese, para o formulário do portal abrir preenchido.
+ *
+ * Separada de `minhaAnamnese` de propósito: aquela é o cabeçalho que a página inicial
+ * mostra, e carregar o JSONB inteiro ali seria pagar por um dado que ninguém lê.
+ *
+ * ── Por que devolve as respostas ANTERIORES, inclusive as da clínica ────────
+ * Anamnese não se responde do zero a cada versão. O paciente que preencheu há oito
+ * meses vai mudar duas linhas, e apresentar o formulário vazio faz ele desistir na
+ * terceira pergunta — ou pior, responder "não" para tudo por pressa, o que produz
+ * declaração falsa sobre alergia.
+ *
+ * Isso **não** apaga nada: `responderMinhaAnamnese` sempre grava uma versão nova
+ * (`anamnese_paciente_versao_uk`), e a anterior continua no prontuário.
+ */
+export async function minhasRespostasDeAnamnese(sessao: SessaoPortal): Promise<{
+  readonly respostas: Record<string, unknown>
+  readonly versaoFormulario: string | null
+} | null> {
+  const [linha] = await db
+    .select({
+      respostas: anamnese.respostas,
+      versaoFormulario: anamnese.versaoFormulario,
+    })
+    .from(anamnese)
+    .where(eq(anamnese.pacienteId, sessao.pacienteId))
+    .orderBy(desc(anamnese.versao))
+    .limit(1)
+
+  if (!linha) return null
+  return {
+    respostas: (linha.respostas ?? {}) as Record<string, unknown>,
+    versaoFormulario: linha.versaoFormulario,
+  }
+}
+
+/**
+ * Quem esta sessão pode assinar por: ela mesma, e os menores sob responsabilidade.
+ *
+ * ── Por que a lista de dependentes sai daqui, e por que isso NÃO fura a regra ──
+ * A regra do arquivo é que nenhuma função aceite `pacienteId` — e nenhuma aceita.
+ * Esta **descobre** os ids a partir de `sessao.pacienteId`, consultando quem tem
+ * `responsavel_legal_id` apontando para ele. O id vem do banco, não da requisição, e é
+ * o mesmo caminho que `quemAssina` valida de novo na hora de gravar.
+ *
+ * Dupla verificação de propósito: a tela precisa saber quem oferecer (senão o
+ * responsável não tem como assinar pelo filho), e a ação precisa validar de novo
+ * (senão a tela seria a única defesa, e tela não é defesa).
+ *
+ * ── E o caso que a tela tem de EXPLICAR ────────────────────────────────────
+ * Um paciente menor com conta própria no portal não pode assinar nada — `quemAssina`
+ * levanta `MENOR_NAO_ASSINA`. Devolver `souMenor` deixa a tela dizer isso em vez de
+ * simplesmente não mostrar o botão, que é o que faz alguém ligar para a clínica
+ * perguntando por que a tela está quebrada.
+ */
+export async function quemEuAssinoPor(sessao: SessaoPortal): Promise<{
+  readonly souMenor: boolean
+  readonly meuNome: string
+  readonly dependentes: readonly { readonly id: string; readonly nome: string }[]
+}> {
+  const hoje = diaLocalIso(new Date(), FUSO_DO_PORTAL)
+
+  const [eu] = await db
+    .select({ nome: paciente.nome, nascimento: paciente.dataNascimento })
+    .from(paciente)
+    .where(eq(paciente.id, sessao.pacienteId))
+    .limit(1)
+
+  const dependentes = await db
+    .select({ id: paciente.id, nome: paciente.nome, nascimento: paciente.dataNascimento })
+    .from(paciente)
+    .where(eq(paciente.responsavelLegalId, sessao.pacienteId))
+    .orderBy(asc(paciente.nome))
+
+  return {
+    souMenor: eu ? idadeEmAnos(eu.nascimento, hoje) < 18 : false,
+    meuNome: eu?.nome ?? sessao.nome,
+    // Só os que ainda são menores: dependente que fez 18 assina o próprio termo, e
+    // oferecê-lo aqui produziria `ASSINATURA_DE_TERCEIRO` na gravação.
+    dependentes: dependentes
+      .filter((d) => idadeEmAnos(d.nascimento, hoje) < 18)
+      .map((d) => ({ id: d.id, nome: d.nome })),
+  }
 }
