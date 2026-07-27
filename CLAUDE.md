@@ -62,6 +62,22 @@ O que **funciona no host** mesmo com Node 18: `npm test`, `npm run typecheck`,
 
 **Ao subir o host para Node 20+**, atualize o Vitest para `^4` e remova esta seção.
 
+### Não rode `npm run build` DENTRO do container que serve o `next dev`
+
+Os dois compartilham `/app/.next`. O build de produção sobrescreve os chunks do dev, e o servidor
+passa a responder **500** com `Cannot find module './vendor-chunks/*.js'` nas páginas que ainda não
+foram recompiladas. Pior: o erro parece regressão do código. Aconteceu, e o `portal:seguranca`
+acusou "VAZOU" em dois casos porque um 500 não é 403 — o vazamento não existia.
+
+Para conferir o build sem derrubar o dev:
+
+```bash
+docker compose run --rm --no-deps app npm run build   # container novo, .next próprio
+```
+
+`docker compose run` cria um volume anônimo novo para `/app/.next`; `docker compose exec` usa o do
+container em pé. Se acontecer, `docker compose restart app` recompila e resolve.
+
 ### `next build` exige `NODE_ENV=production`
 
 Com `NODE_ENV=development` o build monta um bundle misto e a exportação do `/404` falha com
@@ -79,6 +95,22 @@ Duas coisas relacionadas, que só apareceram quando o build passou a rodar:
 - **Componente cliente não importa módulo com `node:crypto`.** Foi o que quebrou o build da
   Fase 12 sem que `npm test` ou `tsc` reclamassem: `AcessoAoPortal.tsx` importava
   `lib/auth/convite.ts`. A parte pura mora em `lib/auth/conviteTexto.ts`.
+
+### A marca é imagem de fundo, e o middleware precisa deixá-la passar
+
+`components/ui/Marca.tsx` usa `background-image: var(--marca-*)` para que a troca de tema troque o
+ARQUIVO (a linha `reverse` do kit é branca, porque `#0D3B66` sobre fundo escuro desaparece). Dois
+`<img>` com `dark:hidden` baixariam os dois arquivos sempre; SVG embutido custaria ~5 KB de traçado
+em toda resposta HTML.
+
+**A tela de login mostra o logotipo, e quem a vê não tem sessão.** `marca/`, `icon.svg` e
+`apple-icon.png` estão fora do `matcher` do middleware — sem isso ele responde 307 aos SVG e o
+login aparece sem logo. O ícone da Apple é **PNG** porque o Safari não aceita SVG em
+`apple-touch-icon`; o `app-icon.svg` do kit é rasterizado a 180 px.
+
+O **favicon não é o app icon do kit**: a 16 px, fundo claro com traço fino vira mancha. Ele é o
+dente branco da linha `reverse` sobre quadrado `#0D3B66` — artwork oficial, recomposto para
+legibilidade, e conferido renderizando a 16 e 32 px.
 
 ### TypeScript
 
@@ -170,7 +202,10 @@ um relatório verde provando invariante nenhuma.
   executado. Comissão paga sobre execução vira adiantamento quando o paciente atrasa.
 - **Identidade Facilident**, do manual da marca: paleta `#0D3B66` / `#1278E3` / `#00B3A6` /
   `#E6F6F6` / `#F2F5F9` / `#6B7280`, tipografia **Poppins**, símbolo do dente com sorriso e
-  pixels. Substitui a decisão anterior (verde-petróleo `#0f766e`), que era explicitamente
+  pixels. **O kit oficial do designer está em `design-system/kit-da-marca/`** (color, mono,
+  reverse, extra) e os arquivos servidos em `public/marca/`. Nada de redesenhar a marca: houve uma
+  fase em que o símbolo era um vetor que eu tirei do PNG do manual, e ele foi descartado quando o
+  kit chegou. Substitui a decisão anterior (verde-petróleo `#0f766e`), que era explicitamente
   condicional a "a clínica não tem identidade visual a aplicar" — o fato mudou, a decisão muda
   com ele. O que **não** mudou: `primary` é o marinho e não o azul, porque azul significa
   "executado" no odontograma e porque `#1278E3` com branco dá 4,37:1 (abaixo de AA). Ver o

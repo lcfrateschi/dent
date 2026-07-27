@@ -1,0 +1,6 @@
+KIT COMPLETO FACILIDENT
+
+- color/: versões oficiais coloridas
+- mono/: versões monocromáticas escuras
+- reverse/: versões brancas para fundo escuro
+- extra/: app icon e ícone reduzido

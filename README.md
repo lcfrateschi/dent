@@ -516,14 +516,22 @@ republique com `/design-sync` e atualize o snapshot no mesmo commit. Foi o que
 pegou a troca de paleta do rebranding: o teste reprovou antes de o catálogo
 começar a mentir.
 
-**Identidade Facilident.** O manual está em `design-system/manual-da-marca.png`
-— é a fonte da paleta, da tipografia e do posicionamento. O símbolo
-é vetor (`components/ui/Marca.tsx`), não raster, porque aparece de 20 px a 64 px
-em tema claro e escuro. Já republicados no catálogo: `tokens/cores.css`,
-`guidelines/cores-marca.html`, `guidelines/cores-superficies.html`,
-`guidelines/marca-logo.html` e `assets/logo.svg`. **Ainda com o nome antigo lá:**
-o UI kit (`ui_kits/dent-staff/`), `readme.md` e `SKILL.md` — são telas de exemplo
-e texto, não afirmam cor errada.
+**Identidade Facilident.** O **kit oficial do designer** está versionado em
+`design-system/kit-da-marca/` (color, mono, reverse, extra) e o manual em
+`design-system/manual-da-marca.png`. Os arquivos servidos ficam em
+`public/marca/`, e a troca de tema troca o **arquivo** — a linha `reverse` é
+branca porque `#0D3B66` sobre fundo escuro desaparece.
+
+Duas peças são **derivadas** do kit, e o motivo está no código: a *palavra
+compacta* (kit sem o grupo do descritor, porque a 22 px de cabeçalho "software de
+gestão odontológica" vira borrão) e o *favicon* (dente branco da linha `reverse`
+sobre quadrado `#0D3B66`, porque o app icon do kit a 16 px vira mancha — o app
+icon vai no `apple-touch-icon`, a 180 px).
+
+Já republicados no catálogo: `tokens/cores.css`, as três guidelines de cor,
+`guidelines/marca-logo.html` e os quatro arquivos de `assets/`. **Ainda com o nome
+antigo lá:** o UI kit (`ui_kits/dent-staff/`), `readme.md` e `SKILL.md` — são telas
+de exemplo e texto, não afirmam cor errada.
 
 Ícones: **Lucide**, via mapa fechado em `components/ui/Icone.tsx`. A regra é
 ícone **acompanha** texto, nunca substitui — as únicas exceções são as setas de

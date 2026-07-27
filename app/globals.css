@@ -54,6 +54,18 @@
     /* Cinza do manual: 4,8:1 sobre branco, acima do mínimo AA. */
     --fg-3: #6b7280;
 
+    /**
+     * Imagens da marca — arquivos oficiais do kit, em `public/marca/`.
+     *
+     * Ficam em variável para que a troca de tema troque o ARQUIVO: a linha
+     * `reverse` (branca) do kit existe porque #0D3B66 sobre fundo escuro
+     * desaparece. Como é `background-image`, só o arquivo do tema em uso é
+     * baixado — dois `<img>` com `dark:hidden` baixariam os dois.
+     */
+    --marca-lockup: url('/marca/facilident-logo-completa-color.svg');
+    --marca-simbolo: url('/marca/facilident-icone-dente-color.svg');
+    --marca-palavra: url('/marca/facilident-wordmark-compacto-color.svg');
+
     /* Cores da marca, para símbolo, palavra e destaques — não para texto miúdo. */
     --marca: #0d3b66;
     --marca-azul: #1278e3;
@@ -102,6 +114,11 @@
     --fg: #e9eef7;
     --fg-2: #b3c0d4;
     --fg-3: #93a2b8;
+
+    /* Versão `reverse` do kit: branca, para fundo escuro. */
+    --marca-lockup: url('/marca/facilident-logo-completa-branco.svg');
+    --marca-simbolo: url('/marca/facilident-icone-dente-branco.svg');
+    --marca-palavra: url('/marca/facilident-wordmark-compacto-branco.svg');
 
     --marca: #e9eef7;
     --marca-azul: #6fb2f2;

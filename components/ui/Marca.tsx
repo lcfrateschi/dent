@@ -1,94 +1,83 @@
 import { cn } from '@/lib/ui/cn'
 
 /**
- * Marca Facilident.
+ * Marca Facilident — arquivos oficiais do kit do designer.
  *
- * ── Por que vetor, e não o PNG do manual ────────────────────────────────────
- * O símbolo aparece de 20 px (cabeçalho) a 64 px (login e portal), em tema claro
- * e escuro. Raster escalado fica borrado no cabeçalho e pesa em toda navegação;
- * o vetor é o mesmo arquivo em qualquer tamanho e acompanha o tema. A estrutura é
- * a do manual: dois traços abertos (coroa e raízes em W), sorriso com dois pontos
- * e os quadrados de "pixel" à direita — a transformação digital do consultório.
+ * ── De onde vêm as imagens ──────────────────────────────────────────────────
+ * `public/marca/`, servidas do próprio domínio. O kit completo, como recebido,
+ * está versionado em `design-system/kit-da-marca/` (color, mono, reverse, extra) —
+ * é a fonte, e nada aqui redesenha nada. A versão anterior deste arquivo tinha um
+ * símbolo que eu havia vetorizado à mão a partir do PNG do manual; ele foi
+ * descartado quando o kit chegou.
  *
- * ── O gradiente é o do manual ───────────────────────────────────────────────
- * `#0D3B66 → #1278E3 → #00B3A6`, na diagonal, como no lockup original: navio
- * escuro na esquerda da coroa, azul no topo, verde-água nas raízes.
+ * ── Por que `background-image` e não `<img>` nem SVG embutido ───────────────
+ * A marca precisa trocar de versão no tema escuro: `#0D3B66` sobre fundo escuro
+ * desaparece, e para isso o kit traz a linha `reverse` (branca).
  *
- * ── `id` do gradiente ───────────────────────────────────────────────────────
- * `defs` com id fixo colidiria quando a marca aparece duas vezes na mesma página
- * (cabeçalho + rodapé). O id vem de `variante`, que já distingue os usos.
+ *   • Dois `<img>` com `dark:hidden` baixariam **os dois** arquivos, sempre — o
+ *     navegador carrega imagem com `display:none`.
+ *   • SVG embutido resolveria o tema, mas são ~5 KB de traçado por peça, em toda
+ *     resposta HTML de toda navegação, e a marca aparece em quatro cascas.
+ *   • `background-image` com variável CSS: **só o arquivo do tema em uso é
+ *     baixado**, fica em cache, e a troca de tema é instantânea. As variáveis
+ *     estão em `app/globals.css`, junto dos outros tokens.
+ *
+ * A contrapartida é que imagem de fundo não sai na impressão por padrão. Aqui não
+ * custa nada: os impressos (atestado, receita, orçamento) levam o cabeçalho da
+ * CLÍNICA, não a marca do software.
+ *
+ * ── Proporções ──────────────────────────────────────────────────────────────
+ * Vêm do `viewBox` de cada arquivo e estão fixas aqui para o espaço ser reservado
+ * antes de a imagem carregar — sem isso o cabeçalho pula quando ela chega.
+ */
+
+/** 340 × 320 do `facilident-icone-dente`. */
+const PROPORCAO_SIMBOLO = 340 / 320
+/** 1320 × 320 do `facilident-logo-completa`, com o descritor. */
+const PROPORCAO_LOCKUP = 1320 / 320
+/** 558.79 × 103.34 do wordmark compacto (derivado do kit, sem o descritor). */
+const PROPORCAO_PALAVRA = 558.79 / 103.34
+
+/**
+ * Só o símbolo do dente. Troca para a versão branca no tema escuro.
+ *
+ * `altura` em px; a largura sai da proporção do arquivo.
  */
 export function SimboloFacilident({
   tamanho = 32,
   className,
-  id = 'marca',
 }: {
   tamanho?: number
   className?: string
+  /** Aceito e ignorado: sobrou da época do SVG embutido, que precisava de id único. */
   id?: string
 }) {
-  const gradiente = `facilident-${id}`
   return (
-    <svg
-      width={tamanho}
-      height={tamanho}
-      viewBox="0 0 64 64"
-      fill="none"
-      className={className}
+    <span
       aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id={gradiente} x1="6" y1="12" x2="44" y2="60" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#0D3B66" />
-          <stop offset="0.5" stopColor="#1278E3" />
-          <stop offset="1" stopColor="#00B3A6" />
-        </linearGradient>
-      </defs>
-      {/* coroa */}
-      <path
-        d="M8 40 C6 28 7 19 12 15 C17 11 21 13 24 20 C27 13 31 11 36 15 C41 19 42 28 40 40"
-        stroke={`url(#${gradiente})`}
-        strokeWidth="5"
-        strokeLinecap="round"
-      />
-      {/* raízes */}
-      <path
-        d="M9 44 C10 53 13 58 17 58 C21 58 23 53 24 48 C25 53 27 58 31 58 C36 58 39 52 41 43"
-        stroke={`url(#${gradiente})`}
-        strokeWidth="5"
-        strokeLinecap="round"
-      />
-      {/* sorriso */}
-      <path
-        d="M14 34 C15 41 20 43 24 41 C27 39.5 28.5 37 29 34"
-        stroke={`url(#${gradiente})`}
-        strokeWidth="3.4"
-        strokeLinecap="round"
-      />
-      <circle cx="14" cy="33" r="2.3" fill="#1278E3" />
-      <circle cx="29" cy="32.5" r="2.3" fill="#00B3A6" />
-      {/* pixels */}
-      <rect x="52" y="2" width="7.5" height="7.5" rx="1.5" fill="#00B3A6" />
-      <rect x="44.5" y="7" width="6" height="6" rx="1.3" fill="#1278E3" />
-      <rect x="50" y="15" width="4.6" height="4.6" rx="1.1" fill="#1278E3" />
-      <rect x="44.5" y="18.5" width="4" height="4" rx="0.9" fill="#6FB2F2" />
-      <rect x="52" y="23" width="4" height="4" rx="0.9" fill="#6FB2F2" />
-      <rect x="46" y="25.5" width="4.6" height="4.6" rx="1.1" fill="#1278E3" />
-    </svg>
+      className={cn('inline-block shrink-0 bg-contain bg-center bg-no-repeat', className)}
+      style={{
+        backgroundImage: 'var(--marca-simbolo)',
+        height: tamanho,
+        width: Math.round(tamanho * PROPORCAO_SIMBOLO),
+      }}
+    />
   )
 }
 
 /**
- * Assinatura completa: símbolo + palavra.
+ * Assinatura da marca.
  *
- * O "i" de "Facilident" é azul-claro no manual — é o único detalhe cromático da
- * palavra, e some se o texto for pintado de uma cor só. Em tema escuro a palavra
- * inteira clareia (`text-fg`), porque `#0D3B66` sobre fundo escuro desaparece.
+ * - `comDescritor` usa o **lockup oficial** (símbolo + palavra + "software de
+ *   gestão odontológica"), para login e portal, onde há espaço.
+ * - sem ele, símbolo + palavra em versão **compacta**: a 22 px de cabeçalho a
+ *   linha do descritor viraria um borrão cinza, e o kit não traz uma versão sem
+ *   ela — esta é derivada dos mesmos vetores, removendo o grupo do descritor
+ *   (ver `public/marca/facilident-wordmark-compacto-color.svg`).
  */
 export function Marca({
   tamanho = 'md',
   comDescritor = false,
-  id = 'marca',
   className,
 }: {
   tamanho?: 'sm' | 'md' | 'lg'
@@ -96,23 +85,41 @@ export function Marca({
   id?: string
   className?: string
 }) {
-  const simbolo = tamanho === 'sm' ? 22 : tamanho === 'md' ? 30 : 52
-  const palavra =
-    tamanho === 'sm' ? 'text-base' : tamanho === 'md' ? 'text-xl' : 'text-4xl'
+  const altura = tamanho === 'sm' ? 24 : tamanho === 'md' ? 32 : 64
+
+  if (comDescritor) {
+    return (
+      <span
+        role="img"
+        aria-label="Facilident — software de gestão odontológica"
+        className={cn('inline-block bg-contain bg-left bg-no-repeat', className)}
+        style={{
+          backgroundImage: 'var(--marca-lockup)',
+          height: altura,
+          width: Math.round(altura * PROPORCAO_LOCKUP),
+        }}
+      />
+    )
+  }
+
+  const alturaPalavra = Math.round(altura * 0.58)
 
   return (
-    <span className={cn('inline-flex items-center gap-2', className)}>
-      <SimboloFacilident tamanho={simbolo} id={id} />
-      <span className="inline-flex flex-col leading-none">
-        <span className={cn('font-semibold tracking-tight text-marca dark:text-fg', palavra)}>
-          Facil<span className="text-marca-azul">i</span>dent
-        </span>
-        {comDescritor ? (
-          <span className="mt-1 text-[0.62em] font-medium uppercase tracking-[0.18em] text-fg-3">
-            Software de gestão odontológica
-          </span>
-        ) : null}
-      </span>
+    <span
+      role="img"
+      aria-label="Facilident"
+      className={cn('inline-flex items-center gap-2', className)}
+    >
+      <SimboloFacilident tamanho={altura} />
+      <span
+        aria-hidden="true"
+        className="inline-block bg-contain bg-left bg-no-repeat"
+        style={{
+          backgroundImage: 'var(--marca-palavra)',
+          height: alturaPalavra,
+          width: Math.round(alturaPalavra * PROPORCAO_PALAVRA),
+        }}
+      />
     </span>
   )
 }

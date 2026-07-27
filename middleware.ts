@@ -127,6 +127,18 @@ export default auth((req) => {
 })
 
 export const config = {
-  // Exclui estáticos e o ícone; tudo mais passa pela guarda.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg).*)'],
+  /**
+   * Exclui estáticos; tudo mais passa pela guarda.
+   *
+   * `marca/` está aqui porque a tela de LOGIN mostra o logotipo — e quem a vê não
+   * tem sessão. Sem esta exceção o middleware respondia 307 para os SVG da marca
+   * e o login aparecia sem logo, com o navegador seguindo o redirecionamento até
+   * o HTML da própria página de login no lugar da imagem.
+   *
+   * `icon.svg` e `apple-icon.png` são os ícones que o Next serve a partir de
+   * `app/` — o navegador os pede antes de qualquer login. O ícone da Apple é PNG
+   * porque o Safari não aceita SVG em `apple-touch-icon`: o `app-icon.svg` do kit
+   * foi rasterizado a 180 px para isso.
+   */
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|marca/).*)'],
 }

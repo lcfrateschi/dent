@@ -437,7 +437,10 @@ docker compose exec app npm run convenio:demo       # ciclo do convênio com os 
 docker compose exec app npm run documentos:demo     # anexos, atestado, receita
 docker compose exec app npm run relatorios:demo     # indicadores conferidos
 docker compose exec app npm run whatsapp:demo       # fila, webhook, efeito na agenda
-npm test                                            # 950 testes de domínio
+npm test                                            # 954 testes de domínio
+
+# Conferir o build sem derrubar o servidor de desenvolvimento:
+docker compose run --rm --no-deps app npm run build
 ```
 
 ---
