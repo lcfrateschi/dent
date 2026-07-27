@@ -46,9 +46,30 @@ use o que o script imprimiu.
 | Financeiro | `financeiro@demo.local` | `Facilident-Financeiro-2026` |
 | Paciente (portal) | `ana@demo.local` | `Paciente-Portal-2026` |
 
-### O código de 6 dígitos
+### O código de 6 dígitos — desligado neste ambiente
 
-MFA é **obrigatório** para a equipe (é prontuário). Duas formas de obter o código:
+**Para testar, você não precisa de código.** O `docker-compose.yml` sobe o serviço
+de desenvolvimento com `MFA_DESABILITADO=true`: o campo do código já vem com
+`000000` preenchido e é **ignorado** no servidor. Entre com e-mail e senha, e
+clique em Entrar. A tela de login avisa que o segundo fator está desligado.
+
+A senha **continua sendo exigida** — só o segundo fator saiu.
+
+> **Isto não pode ir para a clínica, e o sistema garante isso:** com
+> `MFA_DESABILITADO=true` e `NODE_ENV=production`, o app **se recusa a subir**.
+> Não é "ignora em produção" — é erro no boot, junto com a checagem do
+> `AUTH_SECRET`. Um `.env` copiado do desenvolvimento derruba o deploy na cara de
+> quem o fez, em vez de deixar a clínica rodando sem segundo fator. Também não
+> existe código mágico `000000` na verificação TOTP: com o MFA ligado, `000000` é
+> um código errado como qualquer outro.
+
+Para ver o fluxo real (e é o que a clínica vai usar):
+
+```bash
+MFA_DESABILITADO=false docker compose up -d app
+```
+
+Aí valem os três caminhos abaixo.
 
 1. **Sem celular — o mais rápido:**
    ```bash
@@ -75,6 +96,12 @@ MFA é **obrigatório** para a equipe (é prontuário). Duas formas de obter o c
 
 Os dois primeiros só funcionam para `@demo.local` e recusam rodar em produção — o
 filtro está na consulta, não num `if` depois.
+
+E a trava do MFA continua **provável** a qualquer momento: com
+`MFA_DESABILITADO=false`, o `npm run admin:verificar` confirma que o usuário novo
+fica preso em `/configurar-mfa`. Com o MFA desligado, esse caso aparece como
+`⊘ pulado`, com o motivo — um verde silencioso ali afirmaria que a trava existe
+num ambiente onde ela está desligada.
 
 > O paciente **não** tem MFA, por decisão: exigir autenticador de quem entra três
 > vezes por ano produz abandono, não segurança. O que protege ali é bloqueio
@@ -427,6 +454,7 @@ Vale saber antes de confiar:
 | **PDF** | Validado estruturalmente e extraído com `pdftotext`, mas **nunca aberto num visualizador por mim**. Layout fino merece uma olhada humana. |
 | **13 códigos TUSS** | Em branco de propósito: ou não existem na Tabela 22, ou têm vários candidatos e a escolha muda o valor recebido. Ver `dados/README.md`. |
 | **`mfa_secret`** | Em texto claro no banco. Não é bypass (ainda exige senha), mas agrava um vazamento. É a próxima dívida a pagar. |
+| **MFA desligado** | `MFA_DESABILITADO=true` no compose de desenvolvimento. Produção se recusa a subir assim, e o teste `lib/auth/segredo.test.ts` prova as duas pontas. |
 | **Backup** | `docker/backup.sh` funciona e a restauração é testada, mas o arquivo **não sai cifrado da máquina** — isso é decisão de infraestrutura da clínica. |
 
 ---

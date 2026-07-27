@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { mfaDesabilitado } from './mfa'
 import { exigirSegredoDeProducao } from './segredo'
 
 /**
@@ -90,5 +91,54 @@ describe('exigirSegredoDeProducao', () => {
       WHATSAPP_APP_SECRET: 'segredo-real-da-meta',
     })
     expect(() => exigirSegredoDeProducao()).toThrow(/AUTH_SECRET/)
+  })
+
+  it('BARRA MFA_DESABILITADO em produção — é a pior configuração errada', () => {
+    // Um `.env` copiado do desenvolvimento para o servidor é a forma mais comum
+    // de isso acontecer. Melhor o deploy quebrar do que a clínica rodar sem
+    // segundo fator sem ninguém perceber.
+    ambiente({
+      NODE_ENV: 'production',
+      NEXT_PHASE: undefined,
+      AUTH_SECRET: 'K'.repeat(64),
+      WHATSAPP_APP_SECRET: 'segredo-real-da-meta',
+      MFA_DESABILITADO: 'true',
+    })
+    expect(() => exigirSegredoDeProducao()).toThrow(/MFA_DESABILITADO=true não é permitido/)
+  })
+
+  it('e a checagem do MFA vem ANTES das outras', () => {
+    // Com tudo errado ao mesmo tempo, a mensagem tem de ser a do MFA: é a que
+    // mais importa, e a primeira que a pessoa vai ler.
+    ambiente({
+      NODE_ENV: 'production',
+      NEXT_PHASE: undefined,
+      AUTH_SECRET: 'dev-secret-trocar-em-producao-0123456789abcdef',
+      WHATSAPP_APP_SECRET: 'dev-whatsapp-app-secret-trocar-em-producao',
+      MFA_DESABILITADO: 'true',
+    })
+    expect(() => exigirSegredoDeProducao()).toThrow(/MFA_DESABILITADO/)
+  })
+})
+
+describe('mfaDesabilitado', () => {
+  it('desliga só com o valor exatamente "true"', () => {
+    for (const valor of ['true']) {
+      ambiente({ NODE_ENV: 'development', MFA_DESABILITADO: valor })
+      expect(mfaDesabilitado(), valor).toBe(true)
+    }
+    // Nada de "qualquer coisa não vazia": um `=0` deixaria o MFA desligado sem
+    // que ninguém suspeitasse.
+    for (const valor of ['false', '0', '1', 'sim', 'TRUE', '', undefined]) {
+      ambiente({ NODE_ENV: 'development', MFA_DESABILITADO: valor })
+      expect(mfaDesabilitado(), String(valor)).toBe(false)
+    }
+  })
+
+  it('NUNCA desliga em produção, mesmo com a chave ligada', () => {
+    // Dupla guarda: se alguém remover a checagem do boot, esta função continua
+    // não desligando nada em produção.
+    ambiente({ NODE_ENV: 'production', MFA_DESABILITADO: 'true' })
+    expect(mfaDesabilitado()).toBe(false)
   })
 })

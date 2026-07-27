@@ -60,7 +60,11 @@ const COOKIE_PORTAL = 'facilident_portal'
 export default auth((req) => {
   const { pathname } = req.nextUrl
   const logadoStaff = !!req.auth?.user
-  const mfaAtivo = req.auth?.user?.mfaAtivo === true
+  // `MFA_DESABILITADO` vale só em desenvolvimento (ver lib/auth/mfa.ts). Aqui a
+  // leitura é direta porque o middleware roda em Edge e não importa módulo Node.
+  const mfaDesligado =
+    process.env.NODE_ENV !== 'production' && process.env.MFA_DESABILITADO === 'true'
+  const mfaAtivo = req.auth?.user?.mfaAtivo === true || mfaDesligado
   const senhaTemporaria = req.auth?.user?.senhaTemporaria === true
   const temCookiePortal = req.cookies.has(COOKIE_PORTAL)
 

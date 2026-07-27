@@ -103,6 +103,20 @@ async function entrar(
   }
 }
 
+/**
+ * O SERVIDOR está com o segundo fator desligado?
+ *
+ * Pergunta ao app, não ao próprio processo. `process.env` daqui é o do script, e
+ * os dois podem divergir — foi o que aconteceu na primeira tentativa: rodei o
+ * script com `MFA_DESABILITADO=false` enquanto o servidor continuava com `true`,
+ * e ele reprovou uma trava que estava desligada do outro lado. Quem decide é
+ * quem aplica a regra, e o sinal observável é o aviso no login.
+ */
+async function servidorSemMfa(): Promise<boolean> {
+  const html = await (await fetch(`${BASE}/entrar`)).text()
+  return html.includes('duas etapas desligada')
+}
+
 /** Para onde o sistema manda esta sessão quando ela pede uma tela qualquer. */
 async function destinoDe(cookie: string, caminho = '/pacientes'): Promise<string> {
   const r = await fetch(`${BASE}${caminho}`, { headers: { cookie }, redirect: 'manual' })
@@ -179,11 +193,25 @@ async function main(): Promise<void> {
     passo(3, 'Primeiro acesso: presa em /configurar-mfa, mesmo com senha temporária pendente')
     const login1 = await entrar(rec!.email, senhaTemporaria, null)
     conferir(login1.erro === null, `login com a senha temporária foi aceito${login1.erro ?? ''}`)
-    const destino1 = await destinoDe(login1.cookie)
-    conferir(
-      destino1.includes('/configurar-mfa'),
-      `a sessão vai para ${destino1} — segundo fator antes de qualquer coisa`,
-    )
+
+    if (await servidorSemMfa()) {
+      /**
+       * Ambiente com `MFA_DESABILITADO=true`: não há porta de MFA para provar.
+       * O caso é PULADO em voz alta, com o motivo — um verde silencioso aqui
+       * afirmaria que a trava existe num ambiente onde ela está desligada, que é
+       * exatamente o tipo de relatório que engana quem o lê.
+       */
+      console.log(
+        '   \x1b[33m⊘ pulado\x1b[0m a guarda de MFA está DESLIGADA neste ambiente ' +
+          '(MFA_DESABILITADO=true) — rode com MFA_DESABILITADO=false para provar esta trava',
+      )
+    } else {
+      const destino1 = await destinoDe(login1.cookie)
+      conferir(
+        destino1.includes('/configurar-mfa'),
+        `a sessão vai para ${destino1} — segundo fator antes de qualquer coisa`,
+      )
+    }
 
     // Simula a conclusão do cadastro do autenticador (a tela faz isto por action).
     const segredoRec = gerarSegredoTotp()

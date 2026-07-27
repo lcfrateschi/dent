@@ -36,6 +36,22 @@ export function exigirSegredoDeProducao(): void {
    */
   if (process.env.NEXT_PHASE === 'phase-production-build') return
 
+  /**
+   * A chave que desliga o segundo fator não existe em produção.
+   *
+   * Vem primeiro de propósito: é a pior das configurações erradas. Sem MFA, uma
+   * senha vazada abre o prontuário de todos os pacientes — e um `.env` copiado do
+   * desenvolvimento é a forma mais comum de isso acontecer. Melhor o deploy
+   * quebrar na cara de quem o fez.
+   */
+  if (process.env.MFA_DESABILITADO === 'true') {
+    throw new Error(
+      'MFA_DESABILITADO=true não é permitido em produção. Segundo fator é ' +
+        'exigência de prontuário: sem ele, uma senha vazada abre o histórico ' +
+        'clínico de todos os pacientes. Remova a chave do ambiente.',
+    )
+  }
+
   const whatsapp = process.env.WHATSAPP_APP_SECRET
   if (whatsapp === SEGREDO_WHATSAPP_DEV) {
     throw new Error(

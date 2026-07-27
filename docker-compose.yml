@@ -65,6 +65,12 @@ services:
       # credenciais e NÃO cai para disco por omissão.
       ARMAZENAMENTO: ${ARMAZENAMENTO:-disco}
       ARMAZENAMENTO_RAIZ: /anexos
+      # Desliga o segundo fator NESTE serviço de desenvolvimento: o login aceita
+      # qualquer código (o formulário já vem com 000000). O serviço `app-prod`
+      # NÃO recebe esta chave, e o app se recusa a subir em produção com ela —
+      # ver lib/auth/mfa.ts. Para testar o fluxo real de MFA:
+      #   MFA_DESABILITADO=false docker compose up app
+      MFA_DESABILITADO: ${MFA_DESABILITADO:-true}
       S3_HOST: ${S3_HOST:-}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}

@@ -6,7 +6,19 @@ import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
-export function FormularioEntrada({ proximo }: { proximo: string }) {
+export function FormularioEntrada({
+  proximo,
+  mfaDesligado = false,
+}: {
+  proximo: string
+  /**
+   * Ambiente com `MFA_DESABILITADO=true` (só desenvolvimento). O campo do código
+   * vem preenchido com `000000` para você entrar sem digitar nada — e o valor é
+   * ignorado no servidor. Não existe código mágico: com o MFA ligado, `000000` é
+   * um código errado como qualquer outro. Ver lib/auth/mfa.ts.
+   */
+  mfaDesligado?: boolean
+}) {
   const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -40,6 +52,13 @@ export function FormularioEntrada({ proximo }: { proximo: string }) {
     <form onSubmit={enviar} className="space-y-4">
       {erro ? <Alerta>{erro}</Alerta> : null}
 
+      {mfaDesligado ? (
+        <Alerta tipo="atencao">
+          <strong>Verificação em duas etapas desligada neste ambiente.</strong> O código abaixo é
+          ignorado — entre só com e-mail e senha. Em produção o sistema se recusa a subir assim.
+        </Alerta>
+      ) : null}
+
       <Input
         id="email"
         name="email"
@@ -68,7 +87,13 @@ export function FormularioEntrada({ proximo }: { proximo: string }) {
         autoComplete="one-time-code"
         maxLength={7}
         placeholder="000000"
-        ajuda="Deixe em branco se ainda não configurou a verificação em duas etapas."
+        defaultValue={mfaDesligado ? '000000' : undefined}
+        readOnly={mfaDesligado}
+        ajuda={
+          mfaDesligado
+            ? 'Ignorado neste ambiente.'
+            : 'Deixe em branco se ainda não configurou a verificação em duas etapas.'
+        }
       />
 
       <Button type="submit" variante="primario" tamanho="lg" className="w-full" disabled={enviando}>

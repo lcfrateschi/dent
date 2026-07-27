@@ -134,6 +134,14 @@ um relatório verde provando invariante nenhuma.
   `whatsapp:despachar` em laço, a cada 10 min (`DESPACHO_INTERVALO_SEGUNDOS`). Cron do host
   dependeria de alguém lembrar de instalar a linha, e essa pessoa não é a mesma que sobe o
   compose.
+- **O MFA está DESLIGADO no desenvolvimento** (`MFA_DESABILITADO=true` no serviço `app` do
+  compose). O login ignora o campo do código; a senha continua exigida. Três travas contêm o
+  atalho: produção **se recusa a subir** com a chave ligada (erro no boot, em
+  `exigirSegredoDeProducao`), `mfaDesabilitado()` devolve `false` em produção mesmo se aquela
+  checagem for removida, e a tela de login avisa. **Não existe código mágico `000000`** na
+  verificação TOTP — um valor mágico sobreviveria à condição de ambiente falhar; o que existe é o
+  campo ser ignorado. Para provar a trava do MFA de novo: `MFA_DESABILITADO=false docker compose
+  up -d app` e `npm run admin:verificar` (com a chave ligada, aquele caso sai como `⊘ pulado`).
 - **`usuario.mfa_secret` está em texto claro.** Não é bypass de autenticação — ainda exige a
   senha — mas agrava um vazamento de banco. Cifrar exige chave fora do banco e rotação.
 - **`codigo_tuss`: 36 dos 49 procedimentos já têm código OFICIAL.** A faixa odontológica da

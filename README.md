@@ -531,6 +531,11 @@ período da agenda, ambas com `aria-label`.
 
 ## Segurança
 
+> **No desenvolvimento o segundo fator está desligado** (`MFA_DESABILITADO=true`),
+> para não exigir um código de 30 segundos a cada troca de perfil no teste. Em
+> **produção o app se recusa a subir** com essa chave — é erro no boot, não um
+> aviso. Ver `lib/auth/mfa.ts`.
+
 | Garantia | Onde vive |
 |---|---|
 | MFA obrigatório para staff | `middleware.ts` prende em `/configurar-mfa` |

@@ -2,6 +2,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import type { Metadata } from 'next'
 import { FormularioEntrada } from './FormularioEntrada'
 import { Marca } from '@/components/ui/Marca'
+import { mfaDesabilitado } from '@/lib/auth/mfa'
 
 export const metadata: Metadata = { title: 'Entrar' }
 
@@ -29,7 +30,7 @@ export default async function Page({
 
         <Card>
           <CardBody>
-            <FormularioEntrada proximo={destino} />
+            <FormularioEntrada proximo={destino} mfaDesligado={mfaDesabilitado()} />
           </CardBody>
         </Card>
 

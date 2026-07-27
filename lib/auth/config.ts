@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm'
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import { configBase } from './base'
+import { mfaDesabilitado } from './mfa'
 import { exigirSegredoDeProducao } from './segredo'
 import { verificarSenha } from './senha'
 import { verificarCodigoTotp } from './totp'
@@ -75,8 +76,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!linha.ativo) return null
         if (!(await verificarSenha(senha, linha.senhaHash))) return null
 
-        // MFA já configurado: o código é obrigatório.
-        if (linha.mfaAtivo) {
+        /**
+         * MFA já configurado: o código é obrigatório.
+         *
+         * A exceção é `MFA_DESABILITADO=true`, que só existe em desenvolvimento —
+         * em produção `exigirSegredoDeProducao()` já derrubou o boot. Note que o
+         * código não é COMPARADO com nada: não há valor mágico aceito pela
+         * verificação TOTP, porque um valor mágico sobreviveria à condição de
+         * ambiente falhar. Aqui o campo é simplesmente ignorado.
+         */
+        if (linha.mfaAtivo && !mfaDesabilitado()) {
           if (!linha.mfaSecret) return null
           if (!verificarCodigoTotp(linha.mfaSecret, codigo)) return null
         }
