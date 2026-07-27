@@ -1,7 +1,7 @@
 {
   "_leia": "Snapshot dos tokens publicados no projeto de design no Claude Design (projectId c8427061-0628-46ec-8702-b26b48a1c2c2). O teste em lib/ui/tokens.test.ts compara app/globals.css com este arquivo: se divergirem, o catálogo está desatualizado e precisa de /design-sync. Atualize este snapshot NO MESMO commit em que republicar.",
   "_publicadoEm": "2026-07-26",
-  "_ultimoSync": "2026-07-26 — identidade Facilident: tokens/cores.css, guidelines/cores-marca.html, guidelines/cores-superficies.html, guidelines/marca-logo.html e assets/logo.svg republicados. Paleta do manual (#0D3B66 / #1278E3 / #00B3A6 / #E6F6F6 / #F2F5F9 / #6B7280); primário é o marinho, não o azul, por contraste (11,8:1 contra 4,37:1) e para não disputar significado com o azul de \"executado\" do odontograma.",
+  "_ultimoSync": "2026-07-26 — kit oficial da marca (arquivos do designer) e token `marca-chapa`: no tema escuro a assinatura COLORIDA vai sobre chapa #F2F5F9, porque o navio #0D3B66 da palavra sobre #071626 dá 1,3:1. Republicados tokens/cores.css, guidelines/marca-logo.html e os assets oficiais (logo.svg, logo-completa.svg, wordmark-compacto.svg, favicon.svg).",
   "claro": {
     "bg": "#f2f5f9",
     "surface": "#ffffff",
@@ -34,7 +34,8 @@
     "coroa": "#a16207",
     "implante": "#7e22ce",
     "selecionado": "#00b3a6",
-    "selecionado-fill": "#d5f2ef"
+    "selecionado-fill": "#d5f2ef",
+    "marca-chapa": "transparent"
   },
   "escuro": {
     "bg": "#071626",
@@ -68,7 +69,8 @@
     "coroa": "#fbbf24",
     "implante": "#c084fc",
     "selecionado": "#2fd3c6",
-    "selecionado-fill": "#10403c"
+    "selecionado-fill": "#10403c",
+    "marca-chapa": "#f2f5f9"
   },
   "_pendente": {
     "descricao": "Vocabulário que o catálogo já define e o código ainda NÃO usa. Não é erro — é dívida. Adotar em app/globals.css quando houver motivo, não por completude.",

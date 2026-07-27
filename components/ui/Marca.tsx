@@ -11,12 +11,14 @@ import { cn } from '@/lib/ui/cn'
  * descartado quando o kit chegou.
  *
  * ── Por que `background-image` e não `<img>` nem SVG embutido ───────────────
- * A marca troca de arquivo no tema escuro. **O símbolo continua colorido** — o
- * gradiente azul→verde-água lê bem sobre fundo escuro, e é ali que a identidade
- * mora. O que muda é o texto: o navio `#0D3B66` da palavra sobre `#071626` dá
- * 1,3:1 e desaparece. As variantes de fundo escuro são derivadas do lockup
- * oficial trocando **só as duas cores de texto**; gradientes, pixels e os pontos
- * de acento ficam intactos.
+ * **A arte é a original nos dois temas** — símbolo, palavra e descritor como o
+ * designer entregou, sem versão branca e sem recolorir texto.
+ *
+ * Isso tem um custo, e ele é pago com a chapa: o navio `#0D3B66` da palavra sobre
+ * `#071626` dá 1,3:1 de contraste, ou seja, a palavra desapareceria. No tema
+ * escuro a assinatura vai sobre uma superfície clara (`--marca-chapa`), como um
+ * crachá — é um retângulo claro num cabeçalho escuro, e ele chama a atenção. A
+ * alternativa era a linha `reverse` do kit, que lê bem e perde as cores.
  *
  *   • Dois `<img>` com `dark:hidden` baixariam **os dois** arquivos, sempre — o
  *     navegador carrega imagem com `display:none`.
@@ -43,7 +45,8 @@ const PROPORCAO_LOCKUP = 1320 / 320
 const PROPORCAO_PALAVRA = 558.79 / 103.34
 
 /**
- * Só o símbolo do dente — **colorido nos dois temas**.
+ * Só o símbolo do dente — colorido, e **sem chapa**: sozinho ele tem contraste de
+ * sobra sobre o fundo escuro. A chapa existe por causa da palavra.
  *
  * `tamanho` é a altura em px; a largura sai da proporção do arquivo.
  */
@@ -92,18 +95,35 @@ export function Marca({
 }) {
   const altura = tamanho === 'sm' ? 24 : tamanho === 'md' ? 32 : 64
 
+  /**
+   * A chapa vem dos tokens: transparente no claro, `#F2F5F9` no escuro. Assim o
+   * componente não sabe qual é o tema — quem sabe é o CSS, que é o único capaz de
+   * saber antes da primeira pintura.
+   */
+  const chapa = {
+    backgroundColor: 'var(--marca-chapa)',
+    padding: 'var(--marca-chapa-pad)',
+    borderRadius: 'var(--marca-chapa-raio)',
+  } as const
+
   if (comDescritor) {
     return (
       <span
         role="img"
         aria-label="Facilident — software de gestão odontológica"
-        className={cn('inline-block bg-contain bg-left bg-no-repeat', className)}
-        style={{
-          backgroundImage: 'var(--marca-lockup)',
-          height: altura,
-          width: Math.round(altura * PROPORCAO_LOCKUP),
-        }}
-      />
+        className={cn('inline-block', className)}
+        style={chapa}
+      >
+        <span
+          aria-hidden="true"
+          className="block bg-contain bg-left bg-no-repeat"
+          style={{
+            backgroundImage: 'var(--marca-lockup)',
+            height: altura,
+            width: Math.round(altura * PROPORCAO_LOCKUP),
+          }}
+        />
+      </span>
     )
   }
 
@@ -114,6 +134,7 @@ export function Marca({
       role="img"
       aria-label="Facilident"
       className={cn('inline-flex items-center gap-2', className)}
+      style={chapa}
     >
       <SimboloFacilident tamanho={altura} />
       <span

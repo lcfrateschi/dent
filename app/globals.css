@@ -61,16 +61,27 @@
      * `background-image`, só o arquivo do tema em uso é baixado — dois `<img>`
      * com `dark:hidden` baixariam os dois.
      *
-     * **O símbolo é COLORIDO nos dois temas**: o gradiente azul→verde-água do
-     * dente lê bem sobre fundo escuro, e é ali que a identidade mora. No escuro
-     * muda apenas o TEXTO, porque o navio #0D3B66 da palavra sobre #071626 dá
-     * 1,3:1 de contraste e simplesmente desaparece. A linha `reverse` (tudo
-     * branco) do kit fica guardada em `design-system/kit-da-marca/` para quando
-     * for preciso uma marca monocromática — sobre foto, por exemplo.
+     * **A arte é a original em qualquer tema** — símbolo, palavra e descritor
+     * exatamente como o designer entregou. Só que o navio #0D3B66 da palavra
+     * sobre #071626 dá 1,3:1 de contraste: a palavra não fica discreta, fica
+     * invisível.
+     *
+     * A saída é a que os manuais de marca chamam de **chapa**: no tema escuro a
+     * assinatura vai sobre uma superfície clara (`--marca-chapa`), como um
+     * crachá. O custo é honesto — é um retângulo claro num cabeçalho escuro, e
+     * ele chama a atenção. A alternativa seria a linha `reverse` do kit (tudo
+     * branco), que lê bem e perde as cores; a escolha foi manter as cores.
+     *
+     * `reverse` fica guardada em `design-system/kit-da-marca/` para marca
+     * monocromática — sobre foto, por exemplo.
      */
     --marca-lockup: url('/marca/facilident-logo-completa-color.svg');
     --marca-simbolo: url('/marca/facilident-icone-dente-color.svg');
     --marca-palavra: url('/marca/facilident-wordmark-compacto-color.svg');
+    /* Sem chapa no tema claro: a arte já vive sobre superfície clara. */
+    --marca-chapa: transparent;
+    --marca-chapa-pad: 0px;
+    --marca-chapa-raio: 0px;
 
     /* Cores da marca, para símbolo, palavra e destaques — não para texto miúdo. */
     --marca: #0d3b66;
@@ -122,12 +133,16 @@
     --fg-3: #93a2b8;
 
     /**
-     * Fundo escuro: símbolo com as cores do kit, texto clareado.
-     * Ver o comentário no bloco claro para o porquê.
+     * Mesma arte do tema claro — nada de versão branca nem de texto clareado.
+     * O que muda é a chapa atrás, para a palavra em #0D3B66 ter contraste.
+     * `#F2F5F9` é o cinza-claro do próprio manual.
      */
-    --marca-lockup: url('/marca/facilident-logo-completa-escuro.svg');
+    --marca-lockup: url('/marca/facilident-logo-completa-color.svg');
     --marca-simbolo: url('/marca/facilident-icone-dente-color.svg');
-    --marca-palavra: url('/marca/facilident-wordmark-compacto-escuro.svg');
+    --marca-palavra: url('/marca/facilident-wordmark-compacto-color.svg');
+    --marca-chapa: #f2f5f9;
+    --marca-chapa-pad: 4px 8px;
+    --marca-chapa-raio: 8px;
 
     --marca: #e9eef7;
     --marca-azul: #6fb2f2;

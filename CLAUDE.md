@@ -102,11 +102,12 @@ Duas coisas relacionadas, que só apareceram quando o build passou a rodar:
 ARQUIVO. Dois `<img>` com `dark:hidden` baixariam os dois arquivos sempre; SVG embutido custaria
 ~5 KB de traçado em toda resposta HTML.
 
-**O símbolo é colorido nos dois temas** — o gradiente azul→verde-água lê bem sobre fundo escuro, e é
-ali que a identidade mora. No escuro muda só o TEXTO: o navio `#0D3B66` da palavra sobre `#071626`
-dá 1,3:1 e desaparece. As variantes `-escuro` são derivadas do lockup oficial trocando **só as duas
-cores de texto**; gradientes, pixels e os pontos de acento ficam intactos. A linha `reverse` do kit
-(tudo branco) fica guardada para marca monocromática — sobre foto, por exemplo.
+**A arte é a original nos dois temas** — sem versão branca, sem recolorir texto. O custo é pago com
+a **chapa**: o navio `#0D3B66` da palavra sobre `#071626` dá 1,3:1, então no escuro a assinatura vai
+sobre `--marca-chapa` (`#F2F5F9`, o cinza do manual), como crachá. É um retângulo claro num cabeçalho
+escuro — a alternativa era a linha `reverse`, que lê bem e perde as cores; a clínica escolheu manter
+as cores. O símbolo **sozinho** (portal) não leva chapa: tem contraste de sobra. `reverse` fica
+guardada para marca monocromática, sobre foto por exemplo.
 
 **A tela de login mostra o logotipo, e quem a vê não tem sessão.** `marca/`, `icon.svg` e
 `apple-icon.png` estão fora do `matcher` do middleware — sem isso ele responde 307 aos SVG e o
