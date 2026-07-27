@@ -99,18 +99,24 @@ Duas coisas relacionadas, que só apareceram quando o build passou a rodar:
 ### A marca é imagem de fundo, e o middleware precisa deixá-la passar
 
 `components/ui/Marca.tsx` usa `background-image: var(--marca-*)` para que a troca de tema troque o
-ARQUIVO (a linha `reverse` do kit é branca, porque `#0D3B66` sobre fundo escuro desaparece). Dois
-`<img>` com `dark:hidden` baixariam os dois arquivos sempre; SVG embutido custaria ~5 KB de traçado
-em toda resposta HTML.
+ARQUIVO. Dois `<img>` com `dark:hidden` baixariam os dois arquivos sempre; SVG embutido custaria
+~5 KB de traçado em toda resposta HTML.
+
+**O símbolo é colorido nos dois temas** — o gradiente azul→verde-água lê bem sobre fundo escuro, e é
+ali que a identidade mora. No escuro muda só o TEXTO: o navio `#0D3B66` da palavra sobre `#071626`
+dá 1,3:1 e desaparece. As variantes `-escuro` são derivadas do lockup oficial trocando **só as duas
+cores de texto**; gradientes, pixels e os pontos de acento ficam intactos. A linha `reverse` do kit
+(tudo branco) fica guardada para marca monocromática — sobre foto, por exemplo.
 
 **A tela de login mostra o logotipo, e quem a vê não tem sessão.** `marca/`, `icon.svg` e
 `apple-icon.png` estão fora do `matcher` do middleware — sem isso ele responde 307 aos SVG e o
 login aparece sem logo. O ícone da Apple é **PNG** porque o Safari não aceita SVG em
 `apple-touch-icon`; o `app-icon.svg` do kit é rasterizado a 180 px.
 
-O **favicon não é o app icon do kit**: a 16 px, fundo claro com traço fino vira mancha. Ele é o
-dente branco da linha `reverse` sobre quadrado `#0D3B66` — artwork oficial, recomposto para
-legibilidade, e conferido renderizando a 16 e 32 px.
+O **favicon não é o app icon do kit**: ali o dente ocupa metade do quadro e, a 16 px, o traço fino
+sobre fundo quase branco vira mancha. Ele é o dente oficial **colorido**, recortado justo, sobre a
+tinta clara `#E6F6F6` — não branco, senão o badge sumiria em aba de navegador clara. Conferido
+renderizando a 16 e 32 px.
 
 ### TypeScript
 

@@ -522,11 +522,16 @@ começar a mentir.
 `public/marca/`, e a troca de tema troca o **arquivo** — a linha `reverse` é
 branca porque `#0D3B66` sobre fundo escuro desaparece.
 
-Duas peças são **derivadas** do kit, e o motivo está no código: a *palavra
-compacta* (kit sem o grupo do descritor, porque a 22 px de cabeçalho "software de
-gestão odontológica" vira borrão) e o *favicon* (dente branco da linha `reverse`
-sobre quadrado `#0D3B66`, porque o app icon do kit a 16 px vira mancha — o app
-icon vai no `apple-touch-icon`, a 180 px).
+**O símbolo é colorido nos dois temas.** No escuro muda apenas o texto: o navio
+`#0D3B66` da palavra sobre `#071626` dá 1,3:1 de contraste e desaparece. As
+variantes `-escuro` trocam **só as duas cores de texto** do lockup oficial;
+gradientes, pixels e os dois pontos de acento ficam intactos.
+
+Três peças são **derivadas** do kit, e o motivo está no código: a *palavra
+compacta* (sem o grupo do descritor, que a 22 px de cabeçalho vira borrão), o
+*lockup escuro* e o *favicon* (dente oficial colorido sobre a tinta `#E6F6F6`,
+recortado justo — o app icon do kit a 16 px vira mancha, e vai no
+`apple-touch-icon` a 180 px).
 
 Já republicados no catálogo: `tokens/cores.css`, as três guidelines de cor,
 `guidelines/marca-logo.html` e os quatro arquivos de `assets/`. **Ainda com o nome

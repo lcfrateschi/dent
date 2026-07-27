@@ -57,10 +57,16 @@
     /**
      * Imagens da marca — arquivos oficiais do kit, em `public/marca/`.
      *
-     * Ficam em variável para que a troca de tema troque o ARQUIVO: a linha
-     * `reverse` (branca) do kit existe porque #0D3B66 sobre fundo escuro
-     * desaparece. Como é `background-image`, só o arquivo do tema em uso é
-     * baixado — dois `<img>` com `dark:hidden` baixariam os dois.
+     * Ficam em variável para que a troca de tema troque o ARQUIVO. Como é
+     * `background-image`, só o arquivo do tema em uso é baixado — dois `<img>`
+     * com `dark:hidden` baixariam os dois.
+     *
+     * **O símbolo é COLORIDO nos dois temas**: o gradiente azul→verde-água do
+     * dente lê bem sobre fundo escuro, e é ali que a identidade mora. No escuro
+     * muda apenas o TEXTO, porque o navio #0D3B66 da palavra sobre #071626 dá
+     * 1,3:1 de contraste e simplesmente desaparece. A linha `reverse` (tudo
+     * branco) do kit fica guardada em `design-system/kit-da-marca/` para quando
+     * for preciso uma marca monocromática — sobre foto, por exemplo.
      */
     --marca-lockup: url('/marca/facilident-logo-completa-color.svg');
     --marca-simbolo: url('/marca/facilident-icone-dente-color.svg');
@@ -115,10 +121,13 @@
     --fg-2: #b3c0d4;
     --fg-3: #93a2b8;
 
-    /* Versão `reverse` do kit: branca, para fundo escuro. */
-    --marca-lockup: url('/marca/facilident-logo-completa-branco.svg');
-    --marca-simbolo: url('/marca/facilident-icone-dente-branco.svg');
-    --marca-palavra: url('/marca/facilident-wordmark-compacto-branco.svg');
+    /**
+     * Fundo escuro: símbolo com as cores do kit, texto clareado.
+     * Ver o comentário no bloco claro para o porquê.
+     */
+    --marca-lockup: url('/marca/facilident-logo-completa-escuro.svg');
+    --marca-simbolo: url('/marca/facilident-icone-dente-color.svg');
+    --marca-palavra: url('/marca/facilident-wordmark-compacto-escuro.svg');
 
     --marca: #e9eef7;
     --marca-azul: #6fb2f2;

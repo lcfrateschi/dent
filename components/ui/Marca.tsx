@@ -11,8 +11,12 @@ import { cn } from '@/lib/ui/cn'
  * descartado quando o kit chegou.
  *
  * ── Por que `background-image` e não `<img>` nem SVG embutido ───────────────
- * A marca precisa trocar de versão no tema escuro: `#0D3B66` sobre fundo escuro
- * desaparece, e para isso o kit traz a linha `reverse` (branca).
+ * A marca troca de arquivo no tema escuro. **O símbolo continua colorido** — o
+ * gradiente azul→verde-água lê bem sobre fundo escuro, e é ali que a identidade
+ * mora. O que muda é o texto: o navio `#0D3B66` da palavra sobre `#071626` dá
+ * 1,3:1 e desaparece. As variantes de fundo escuro são derivadas do lockup
+ * oficial trocando **só as duas cores de texto**; gradientes, pixels e os pontos
+ * de acento ficam intactos.
  *
  *   • Dois `<img>` com `dark:hidden` baixariam **os dois** arquivos, sempre — o
  *     navegador carrega imagem com `display:none`.
@@ -39,9 +43,9 @@ const PROPORCAO_LOCKUP = 1320 / 320
 const PROPORCAO_PALAVRA = 558.79 / 103.34
 
 /**
- * Só o símbolo do dente. Troca para a versão branca no tema escuro.
+ * Só o símbolo do dente — **colorido nos dois temas**.
  *
- * `altura` em px; a largura sai da proporção do arquivo.
+ * `tamanho` é a altura em px; a largura sai da proporção do arquivo.
  */
 export function SimboloFacilident({
   tamanho = 32,
@@ -73,7 +77,8 @@ export function SimboloFacilident({
  * - sem ele, símbolo + palavra em versão **compacta**: a 22 px de cabeçalho a
  *   linha do descritor viraria um borrão cinza, e o kit não traz uma versão sem
  *   ela — esta é derivada dos mesmos vetores, removendo o grupo do descritor
- *   (ver `public/marca/facilident-wordmark-compacto-color.svg`).
+ *   (ver `public/marca/facilident-wordmark-compacto-color.svg`, e a variante `-escuro`
+ *   com o texto clareado).
  */
 export function Marca({
   tamanho = 'md',
