@@ -43,17 +43,28 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className={poppins.variable} suppressHydrationWarning>
-      <head>
-        {/*
-          Tema aplicado antes da primeira pintura, para não haver flash de tema
-          claro em quem usa escuro. Script mínimo, sem dependência.
-        */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem('facilident-tema');if(t==='escuro'||(!t&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')}catch(e){}`,
-          }}
-        />
-      </head>
+      {/*
+        O tema escuro está DESLIGADO por enquanto, por decisão: a marca é aplicada
+        na cor original, e sobre fundo escuro a palavra #0D3B66 precisaria de chapa
+        clara — um retângulo claro no cabeçalho escuro. Enquanto essa decisão não
+        estiver fechada, o app fica no claro.
+
+        Aqui morava um script que aplicava `.dark` antes da primeira pintura,
+        lendo `localStorage` e `prefers-color-scheme`. Ele saiu com o alternador.
+
+        **Para religar:** devolver o script abaixo, recolocar `<AlternarTema />`
+        nas três cascas (staff, portal, design) e conferir a chapa da marca no
+        escuro (`--marca-chapa` em app/globals.css).
+
+            <script dangerouslySetInnerHTML={{ __html:
+              `try{var t=localStorage.getItem('facilident-tema');`
+              + `if(t==='escuro'||(!t&&matchMedia('(prefers-color-scheme:dark)').matches))`
+              + `document.documentElement.classList.add('dark')}catch(e){}` }} />
+
+        Os tokens do bloco `.dark` continuam em app/globals.css, vivos e cobertos
+        pelo teste de tokens: apagá-los faria o catálogo do design system divergir
+        do código, e religar o tema viraria um trabalho de arqueologia.
+      */}
       <body className="min-h-dvh antialiased">{children}</body>
     </html>
   )

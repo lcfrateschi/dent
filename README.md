@@ -522,6 +522,10 @@ começar a mentir.
 `public/marca/`, e a troca de tema troca o **arquivo** — a linha `reverse` é
 branca porque `#0D3B66` sobre fundo escuro desaparece.
 
+> **O app está travado no tema claro por enquanto.** O alternador saiu das cascas
+> e o script de pré-pintura está comentado em `app/layout.tsx`, com o caminho de
+> volta. Os tokens `.dark` continuam no código, vivos e testados.
+
 **A arte é a original nos dois temas.** No tema escuro a assinatura vai sobre uma
 **chapa** clara (`#F2F5F9`, o cinza do manual), porque o navio `#0D3B66` da palavra
 sobre `#071626` dá 1,3:1 de contraste — desapareceria. É um retângulo claro num

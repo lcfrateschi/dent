@@ -1,4 +1,3 @@
-import { AlternarTema } from '@/components/ui/AlternarTema'
 import { BotaoSair } from '@/components/ui/BotaoSair'
 import { ROTULO_PERFIL, type Recurso, podeVer } from '@/lib/authz/politicas'
 import { atorAtual } from '@/lib/authz/sessao'
@@ -105,7 +104,6 @@ export default async function StaffLayout({ children }: { children: React.ReactN
               <div className="text-sm font-medium text-fg">{ator.nome}</div>
               <div className="text-xs text-fg-3">{ROTULO_PERFIL[ator.perfil]}</div>
             </div>
-            <AlternarTema />
             <BotaoSair />
           </div>
         </div>

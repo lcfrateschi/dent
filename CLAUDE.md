@@ -102,6 +102,12 @@ Duas coisas relacionadas, que só apareceram quando o build passou a rodar:
 ARQUIVO. Dois `<img>` com `dark:hidden` baixariam os dois arquivos sempre; SVG embutido custaria
 ~5 KB de traçado em toda resposta HTML.
 
+**O app está travado no tema CLARO por enquanto.** O alternador saiu das três cascas e o script de
+pré-pintura de `app/layout.tsx` está em comentário, com o caminho de volta escrito ali e em
+`components/ui/AlternarTema.tsx`. Os tokens `.dark` continuam vivos em `app/globals.css` e cobertos
+pelo teste de tokens — apagá-los faria o catálogo do design system divergir do código, e religar o
+tema viraria arqueologia. O motivo do desligamento está no parágrafo seguinte.
+
 **A arte é a original nos dois temas** — sem versão branca, sem recolorir texto. O custo é pago com
 a **chapa**: o navio `#0D3B66` da palavra sobre `#071626` dá 1,3:1, então no escuro a assinatura vai
 sobre `--marca-chapa` (`#F2F5F9`, o cinza do manual), como crachá. É um retângulo claro num cabeçalho

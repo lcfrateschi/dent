@@ -6,6 +6,18 @@ import { Button } from './Button'
 type Tema = 'claro' | 'escuro'
 
 /**
+ * ⚠️ FORA DAS CASCAS por enquanto — o app está travado no tema claro.
+ *
+ * O componente continua funcionando e não foi apagado: religá-lo é recolocar
+ * `<AlternarTema />` nas três cascas (staff, portal, design) e devolver o script
+ * de pré-pintura em `app/layout.tsx`, que está lá em comentário. Os tokens do
+ * bloco `.dark` seguem em `app/globals.css`, cobertos pelo teste de tokens.
+ *
+ * O motivo do desligamento é a marca: ela é aplicada na cor original, e sobre
+ * fundo escuro a palavra #0D3B66 precisa de chapa clara — um retângulo claro no
+ * cabeçalho escuro. Enquanto essa decisão não estiver fechada, o app fica claro.
+ */
+/**
  * Alterna claro/escuro. O tema inicial é aplicado por um script inline em
  * `app/layout.tsx`, antes da primeira pintura — por isso aqui só lemos o que
  * já está no DOM, sem causar flash.

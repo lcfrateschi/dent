@@ -1,4 +1,3 @@
-import { AlternarTema } from '@/components/ui/AlternarTema'
 import Link from 'next/link'
 import { Marca } from '@/components/ui/Marca'
 
@@ -20,9 +19,6 @@ export default function DesignLayout({ children }: { children: React.ReactNode }
               Odontograma
             </Link>
           </nav>
-          <div className="ml-auto">
-            <AlternarTema />
-          </div>
         </div>
       </header>
       <main className="mx-auto max-w-[1400px] px-4 py-5">{children}</main>

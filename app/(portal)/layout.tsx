@@ -1,4 +1,3 @@
-import { AlternarTema } from '@/components/ui/AlternarTema'
 import { Icone } from '@/components/ui/Icone'
 import { cn } from '@/lib/ui/cn'
 import type { Metadata } from 'next'
@@ -62,12 +61,9 @@ export default async function PortalLayout({ children }: { children: React.React
             {sessao ? (
               <>
                 <span className="text-sm text-fg-2">{primeiroNome(sessao.nome)}</span>
-                <AlternarTema />
                 <BotaoSairPortal />
               </>
-            ) : (
-              <AlternarTema />
-            )}
+            ) : null}
           </div>
         </div>
 
