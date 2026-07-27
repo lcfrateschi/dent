@@ -84,6 +84,7 @@ export default async function Page() {
               cnpj: config?.cnpj ?? '',
               croResponsavel: config?.croResponsavel ?? '',
               ufCroResponsavel: config?.ufCroResponsavel ?? '',
+              cnes: config?.cnes ?? '',
               telefone: config?.telefone ?? '',
               email: config?.email ?? '',
               cep: config?.cep ?? '',

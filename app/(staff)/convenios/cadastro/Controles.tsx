@@ -13,6 +13,7 @@ interface ConvenioEditavel {
   id: string
   nome: string
   registroAns: string | null
+  codigoPrestador: string | null
   cnpj: string | null
   prazoPagamentoDias: number
   diaFechamento: number | null
@@ -34,6 +35,7 @@ function Formulario({
   const [pendente, iniciar] = useTransition()
   const [nome, setNome] = useState(inicial?.nome ?? '')
   const [registroAns, setRegistroAns] = useState(inicial?.registroAns ?? '')
+  const [codigoPrestador, setCodigoPrestador] = useState(inicial?.codigoPrestador ?? '')
   const [cnpj, setCnpj] = useState(inicial?.cnpj ?? '')
   const [prazo, setPrazo] = useState(String(inicial?.prazoPagamentoDias ?? 30))
   const [diaFechamento, setDiaFechamento] = useState(
@@ -55,6 +57,7 @@ function Formulario({
             {
               nome,
               registroAns: registroAns || undefined,
+              codigoPrestador: codigoPrestador || undefined,
               cnpj: cnpj || undefined,
               prazoPagamentoDias: Number(prazo),
               diaFechamento: diaFechamento ? Number(diaFechamento) : undefined,
@@ -98,6 +101,23 @@ function Formulario({
             placeholder="5 ou 6 dígitos"
             className={`${campo} mt-1`}
           />
+        </div>
+        <div>
+          <label htmlFor="op-prestador" className="block text-xs font-medium text-fg-2">
+            Nosso código nesta operadora
+          </label>
+          <input
+            id="op-prestador"
+            value={codigoPrestador}
+            onChange={(e) => setCodigoPrestador(e.currentTarget.value)}
+            maxLength={20}
+            className={`${campo} mt-1`}
+          />
+          <p className="mt-1 text-xs text-fg-3">
+            O código que ESTA operadora deu à clínica — vai no XML TISS. Cada operadora usa
+            um formato próprio, então nada é recusado aqui. Está no contrato ou no portal
+            dela; deixe em branco se ainda não faturou por esta operadora.
+          </p>
         </div>
         <div>
           <label htmlFor="op-cnpj" className="block text-xs font-medium text-fg-2">

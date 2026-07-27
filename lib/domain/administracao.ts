@@ -1,3 +1,4 @@
+import { MSG_CBOS_INVALIDO, cbosEhValido, normalizarCbos } from './cadastroTiss'
 import { comparaData } from './datas'
 import type { Perfil } from '@/lib/authz/politicas'
 
@@ -129,6 +130,14 @@ export interface DadosDeProfissional {
   readonly cro: string
   readonly ufCro: string
   readonly comissaoPct: string
+  /**
+   * CBO-S, obrigatório no XML TISS e **opcional aqui**.
+   *
+   * Vazio é válido: dentista de clínica que só atende particular nunca vai emitir
+   * guia, e exigir o CBO-S no cadastro travaria a contratação por causa de um campo
+   * de faturamento. Quem cobra é `conferirAntesDeEnviar`, na emissão.
+   */
+  readonly cbos?: string
 }
 
 /**
@@ -151,6 +160,10 @@ export function validarProfissional(dados: DadosDeProfissional): Resultado {
   if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
     return { ok: false, motivo: 'Comissão deve ser um percentual entre 0 e 100.' }
   }
+  // Só quando preenchido: ver o comentário do campo. O CHECK
+  // `profissional_cbos_formato` é a garantia; esta linha é a mensagem.
+  const cbos = dados.cbos?.trim() ?? ''
+  if (cbos && !cbosEhValido(cbos)) return { ok: false, motivo: MSG_CBOS_INVALIDO }
   return { ok: true }
 }
 
@@ -159,6 +172,10 @@ export function normalizarProfissional(dados: DadosDeProfissional): DadosDeProfi
     cro: dados.cro.trim(),
     ufCro: dados.ufCro.trim().toUpperCase(),
     comissaoPct: Number(dados.comissaoPct).toFixed(2),
+    // `undefined` e não `''`: a coluna é anulável, e string vazia gravada num campo
+    // que o XML lê seria "preenchido com nada" — pior que nulo, porque
+    // `conferirAntesDeEnviar` deixaria de apontar a pendência.
+    cbos: dados.cbos?.trim() ? normalizarCbos(dados.cbos) : undefined,
   }
 }
 

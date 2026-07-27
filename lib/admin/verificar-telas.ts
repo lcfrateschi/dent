@@ -6,12 +6,14 @@ import {
   agendamento,
   auditLog,
   cadeira,
+  convenio,
   paciente,
   procedimento,
   profissional,
   usuario,
 } from '@/lib/db/schema'
-import { desativarCadeiraComAtor, salvarCadeiraComAtor } from './clinica'
+import { desativarCadeiraComAtor, salvarCadeiraComAtor, salvarClinicaComAtor } from './clinica'
+import { configuracaoDaClinica } from './consultas'
 import {
   criarUsuarioComAtor,
   desativarUsuarioComAtor,
@@ -367,6 +369,81 @@ async function main(): Promise<void> {
       conferir(prof?.comissao === '45.00', `comissão gravada como ${prof?.comissao}`)
     }
 
+    /**
+     * ── CBO-S: o par certo/errado ─────────────────────────────────────────
+     *
+     * Sem o caso do valor CERTO ao lado, "recusa 322405" também seria verdade se a
+     * validação recusasse tudo. E sem o caso do ERRADO, "aceita 223208" seria
+     * verdade se ela não validasse nada. Os dois juntos é que dizem algo.
+     *
+     * 322405 é auxiliar em saúde bucal — CBO real, profissão real, e errado nesta
+     * tabela, que é de quem tem CRO. É o valor que alguém copia de outro sistema.
+     */
+    const cbosErrado = await criarUsuarioComAtor(ator, {
+      nome: `${MARCA} Dr. CBOS de auxiliar`,
+      email: `cbos-mau-${Date.now()}@local`,
+      perfil: 'dentista',
+      cro: `W${Date.now() % 100000}`,
+      ufCro: 'SP',
+      comissaoPct: '0',
+      cbos: '322405',
+    })
+    conferir(
+      !cbosErrado.ok && (cbosErrado.ok ? '' : cbosErrado.mensagem).includes('cirurgião-dentista'),
+      `CBO-S de outra família recusado, e a mensagem diz por quê: "${cbosErrado.ok ? 'ACEITOU' : cbosErrado.mensagem}"`,
+    )
+    if (cbosErrado.ok && cbosErrado.id) criados.usuarios.push(cbosErrado.id)
+
+    const cbosBom = await criarUsuarioComAtor(ator, {
+      nome: `${MARCA} Dra. CBOS certo`,
+      email: `cbos-bom-${Date.now()}@local`,
+      perfil: 'dentista',
+      cro: `X${Date.now() % 100000}`,
+      ufCro: 'SP',
+      comissaoPct: '0',
+      cbos: '2232-08',
+    })
+    conferir(cbosBom.ok, `CBO-S da família 2232 aceito: ${cbosBom.mensagem}`)
+    if (cbosBom.ok && cbosBom.id) {
+      criados.usuarios.push(cbosBom.id)
+      const [comCbos] = await db
+        .select({ cbos: profissional.cbos })
+        .from(profissional)
+        .where(eq(profissional.usuarioId, cbosBom.id))
+      // Gravado sem a pontuação que o usuário digitou: o XML leva só dígitos.
+      conferir(comCbos?.cbos === '223208', `gravado normalizado: ${comCbos?.cbos}`)
+    }
+
+    /**
+     * ── CNES: o par certo/errado ──────────────────────────────────────────
+     *
+     * Mesmo raciocínio do CBO-S. Note que o valor errado é o **quase certo** — seis
+     * dígitos em vez de sete — porque é o que se digita de verdade; um `'abc'` seria
+     * recusado por qualquer validação, inclusive uma que não olha o tamanho.
+     */
+    const clinicaAntes = await configuracaoDaClinica()
+    if (!clinicaAntes) throw new Error('configuração da clínica não encontrada')
+    const baseDaClinica = {
+      razaoSocial: clinicaAntes.razaoSocial,
+      nomeFantasia: clinicaAntes.nomeFantasia ?? undefined,
+      cnpj: clinicaAntes.cnpj ?? undefined,
+      cidade: clinicaAntes.cidade ?? undefined,
+      uf: clinicaAntes.uf ?? undefined,
+    }
+
+    const cnesCurto = await salvarClinicaComAtor(ator, { ...baseDaClinica, cnes: '123456' })
+    conferir(
+      !cnesCurto.ok && (cnesCurto.ok ? '' : cnesCurto.mensagem).includes('7 dígitos'),
+      `CNES de 6 dígitos recusado, dizendo o tamanho: "${cnesCurto.ok ? 'ACEITOU' : cnesCurto.mensagem}"`,
+    )
+
+    const cnesBom = await salvarClinicaComAtor(ator, { ...baseDaClinica, cnes: '12.345-67' })
+    conferir(cnesBom.ok, `CNES de 7 dígitos aceito: ${cnesBom.mensagem}`)
+    const depoisCnes = await configuracaoDaClinica()
+    conferir(depoisCnes?.cnes === '1234567', `gravado normalizado: ${depoisCnes?.cnes}`)
+    // Devolve ao estado anterior: esta verificação não preenche cadastro de ninguém.
+    await salvarClinicaComAtor(ator, { ...baseDaClinica, cnes: clinicaAntes.cnes ?? '' })
+
     // ── 10. Reset de MFA não revela segredo ───────────────────────────────
     passo(10, 'Reiniciar o autenticador apaga o segredo, não o mostra')
     const reset = await resetarMfaComAtor(ator, nova.id)
@@ -394,6 +471,26 @@ async function main(): Promise<void> {
     conferir(op.ok, op.mensagem)
     if (!op.ok || !op.id) throw new Error('operadora não criada')
     criados.convenios.push(op.id)
+
+    /**
+     * O código do prestador **não tem formato travado**, e o caso prova isso em vez
+     * de presumir: um valor com letra e hífen tem de ser aceito, porque cada operadora
+     * usa o seu. Uma validação inventada por nós recusaria dado que a operadora emitiu.
+     */
+    const comPrestador = await salvarConvenioComAtor(
+      ator,
+      { nome: `${MARCA} Operadora`, registroAns: '412345', codigoPrestador: 'PRE-90233/2' },
+      op.id,
+    )
+    conferir(comPrestador.ok, `código de prestador com letra e hífen aceito: ${comPrestador.mensagem}`)
+    const [convSalvo] = await db
+      .select({ codigo: convenio.codigoPrestador })
+      .from(convenio)
+      .where(eq(convenio.id, op.id))
+    conferir(
+      convSalvo?.codigo === 'PRE-90233/2',
+      `gravado como a operadora o emitiu, sem normalização: ${convSalvo?.codigo}`,
+    )
 
     /**
      * O filtro por clínica NÃO é decoração. `procedimento.codigo` era único no

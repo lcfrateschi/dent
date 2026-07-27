@@ -267,6 +267,20 @@
       "when": 1785148754837,
       "tag": "0038_baseline_da_profundidade_clinica",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1785148755837,
+      "tag": "0039_cadastro_para_tiss",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1785164918864,
+      "tag": "0040_baseline_do_cadastro_tiss",
+      "breakpoints": true
     }
   ]
 }

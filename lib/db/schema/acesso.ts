@@ -73,6 +73,16 @@ export const clinica = pgTable(
      * `lib/domain/taxaPagamento.ts`.
      */
     comissaoSobreLiquido: boolean('comissao_sobre_liquido').notNull().default(false),
+    /**
+     * CNES do estabelecimento — sete dígitos, obrigatório no XML TISS.
+     *
+     * Anulável porque clínica só particular não tem e nunca vai ter. O que cobra o
+     * preenchimento é a emissão da guia, no momento em que ele importa; até lá,
+     * `conferirAntesDeEnviar` o lista como pendência. Formato travado por CHECK
+     * (`clinica_cnes_formato`): é padrão nacional, e CNES com 6 dígitos é erro de
+     * digitação que só aparece na guia recusada.
+     */
+    cnes: varchar('cnes', { length: 7 }),
     /** Granularidade dos horários oferecidos na agenda, em minutos. */
     passoAgendaMinutos: smallint('passo_agenda_minutos').notNull().default(15),
     /**
@@ -192,6 +202,16 @@ export const profissional = pgTable(
     cro: varchar('cro', { length: 20 }).notNull(),
     ufCro: varchar('uf_cro', { length: 2 }).notNull(),
     especialidade: text('especialidade'),
+    /**
+     * CBO-S, seis dígitos, obrigatório no XML TISS.
+     *
+     * O CHECK exige a família **2232** (cirurgião-dentista), e isso não é dedução: o
+     * domínio `dm_CBOS` do XSD da ANS documenta a faixa, e a procedência do arquivo
+     * está em `dados/tiss-xsd-3.05.00/PROCEDENCIA.md`. A trava é segura aqui porque
+     * esta tabela é 1:1 com usuário `dentista` e exige CRO — auxiliar de saúde bucal
+     * (família 3224) não entra. Se um dia entrar, a trava é que vai avisar.
+     */
+    cbos: varchar('cbos', { length: 6 }),
     /** Percentual de comissão, 0–100. Base definida em `clinica.base_comissao`. */
     comissaoPct: numeric('comissao_pct', { precision: 5, scale: 2 }).notNull().default('0'),
     ativo: boolean('ativo').notNull().default(true),

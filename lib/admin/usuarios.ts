@@ -67,6 +67,11 @@ export interface DadosDoUsuario {
   readonly ufCro?: string
   readonly comissaoPct?: string
   readonly especialidade?: string
+  /**
+   * CBO-S do dentista, obrigatório no XML TISS e opcional aqui — ver o campo em
+   * `DadosDeProfissional`. Família 2232 conforme `dm_CBOS` do XSD da ANS.
+   */
+  readonly cbos?: string
 }
 
 /**
@@ -95,6 +100,7 @@ export async function criarUsuarioComAtor(
       cro: dados.cro ?? '',
       ufCro: dados.ufCro ?? '',
       comissaoPct: dados.comissaoPct ?? '0',
+      cbos: dados.cbos,
     })
     if (!v.ok) return { ok: false, mensagem: v.motivo }
   }
@@ -122,12 +128,17 @@ export async function criarUsuarioComAtor(
           cro: dados.cro ?? '',
           ufCro: dados.ufCro ?? '',
           comissaoPct: dados.comissaoPct ?? '0',
+          cbos: dados.cbos,
         })
         await tx.insert(profissional).values({
           usuarioId: novo.id,
           cro: p.cro,
           ufCro: p.ufCro,
           comissaoPct: p.comissaoPct,
+          // `?? null` e não `|| null`: `normalizarProfissional` já devolve
+          // `undefined` quando vazio, e o Drizzle omitiria a coluna do INSERT em
+          // vez de gravar nulo — o que na EDIÇÃO deixaria o valor antigo de pé.
+          cbos: p.cbos ?? null,
           especialidade: dados.especialidade?.trim() || null,
         })
       }
@@ -176,6 +187,7 @@ export async function salvarUsuarioComAtor(
       cro: dados.cro ?? '',
       ufCro: dados.ufCro ?? '',
       comissaoPct: dados.comissaoPct ?? '0',
+      cbos: dados.cbos,
     })
     if (!v.ok) return { ok: false, mensagem: v.motivo }
   }
@@ -192,11 +204,13 @@ export async function salvarUsuarioComAtor(
           cro: dados.cro ?? '',
           ufCro: dados.ufCro ?? '',
           comissaoPct: dados.comissaoPct ?? '0',
+          cbos: dados.cbos,
         })
         const valores = {
           cro: p.cro,
           ufCro: p.ufCro,
           comissaoPct: p.comissaoPct,
+          cbos: p.cbos ?? null,
           especialidade: dados.especialidade?.trim() || null,
           atualizadoEm: new Date(),
         }

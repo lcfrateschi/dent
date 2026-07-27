@@ -14,6 +14,8 @@ export interface ConvenioNaTela {
   readonly id: string
   readonly nome: string
   readonly registroAns: string | null
+  /** Nosso código nesta operadora. Obrigatório no XML TISS; nulo até faturar por ela. */
+  readonly codigoPrestador: string | null
   readonly cnpj: string | null
   readonly prazoPagamentoDias: number
   readonly diaFechamento: number | null
@@ -33,6 +35,7 @@ export async function conveniosCadastrados(hoje: string): Promise<readonly Conve
       id: convenio.id,
       nome: convenio.nome,
       registroAns: convenio.registroAns,
+      codigoPrestador: convenio.codigoPrestador,
       cnpj: convenio.cnpj,
       prazoPagamentoDias: convenio.prazoPagamentoDias,
       diaFechamento: convenio.diaFechamento,

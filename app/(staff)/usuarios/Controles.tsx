@@ -28,6 +28,7 @@ interface UsuarioEditavel {
   ativo: boolean
   cro: string | null
   ufCro: string | null
+  cbos: string | null
   comissaoPct: string | null
   especialidade: string | null
 }
@@ -78,6 +79,7 @@ function Formulario({
   const [perfil, setPerfil] = useState<Perfil>(inicial?.perfil ?? 'recepcao')
   const [cro, setCro] = useState(inicial?.cro ?? '')
   const [ufCro, setUfCro] = useState(inicial?.ufCro ?? 'SP')
+  const [cbos, setCbos] = useState(inicial?.cbos ?? '')
   const [comissao, setComissao] = useState(inicial?.comissaoPct ?? '0')
   const [especialidade, setEspecialidade] = useState(inicial?.especialidade ?? '')
   const [erro, setErro] = useState<string | null>(null)
@@ -97,6 +99,7 @@ function Formulario({
             perfil,
             cro: precisaCro ? cro : undefined,
             ufCro: precisaCro ? ufCro : undefined,
+            cbos: precisaCro ? cbos : undefined,
             comissaoPct: precisaCro ? comissao : undefined,
             especialidade: precisaCro ? especialidade : undefined,
           }
@@ -216,6 +219,24 @@ function Formulario({
                 onChange={(e) => setEspecialidade(e.currentTarget.value)}
                 className={`${campo} mt-1`}
               />
+            </div>
+            <div>
+              <label htmlFor="u-cbos" className="block text-xs font-medium text-fg-2">
+                CBO-S (opcional)
+              </label>
+              <input
+                id="u-cbos"
+                value={cbos}
+                onChange={(e) => setCbos(e.currentTarget.value)}
+                maxLength={6}
+                placeholder="2232xx"
+                className={`${campo} mt-1`}
+              />
+              <p className="mt-1 text-xs text-fg-3">
+                Ocupação na tabela da ANS, obrigatória no faturamento por convênio (vai no XML
+                TISS). Começa em <strong>2232</strong>, que é a família de cirurgião-dentista.
+                Não é usada no particular — deixe em branco se este dentista não atende convênio.
+              </p>
             </div>
           </>
         ) : null}

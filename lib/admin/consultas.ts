@@ -28,6 +28,8 @@ export interface UsuarioNaTela {
   readonly profissionalId: string | null
   readonly cro: string | null
   readonly ufCro: string | null
+  /** CBO-S. Nulo em dentista que não atende convênio. */
+  readonly cbos: string | null
   readonly especialidade: string | null
   readonly comissaoPct: string | null
   readonly profissionalAtivo: boolean | null
@@ -48,6 +50,7 @@ export async function usuarios(): Promise<readonly UsuarioNaTela[]> {
       profissionalId: profissional.id,
       cro: profissional.cro,
       ufCro: profissional.ufCro,
+      cbos: profissional.cbos,
       especialidade: profissional.especialidade,
       comissaoPct: profissional.comissaoPct,
       profissionalAtivo: profissional.ativo,
@@ -68,6 +71,8 @@ export interface ConfiguracaoDaClinica {
   readonly cnpj: string | null
   readonly croResponsavel: string | null
   readonly ufCroResponsavel: string | null
+  /** CNES do estabelecimento. Nulo em clínica que não fatura convênio. */
+  readonly cnes: string | null
   readonly telefone: string | null
   readonly email: string | null
   readonly cep: string | null

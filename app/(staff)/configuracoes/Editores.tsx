@@ -22,6 +22,7 @@ interface DadosClinica {
   cnpj: string
   croResponsavel: string
   ufCroResponsavel: string
+  cnes: string
   telefone: string
   email: string
   cep: string
@@ -87,6 +88,12 @@ export function ClinicaEditor({ inicial }: { inicial: DadosClinica }) {
           </div>
           <div className="w-20">{campoTexto('ufCroResponsavel', 'UF', { maxLength: 2 })}</div>
         </div>
+        {campoTexto('cnes', 'CNES do estabelecimento', {
+          maxLength: 7,
+          ajuda:
+            'Sete dígitos, obrigatório no faturamento por convênio (vai no XML TISS). ' +
+            'Não é usado no particular — deixe em branco se a clínica não fatura convênio.',
+        })}
         {campoTexto('telefone', 'Telefone')}
         {campoTexto('email', 'E-mail')}
       </div>

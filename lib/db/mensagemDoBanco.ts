@@ -27,3 +27,31 @@ export function mensagemDoBanco(e: unknown): string {
   }
   return partes.length > 0 ? partes.join(' | ') : String(e)
 }
+
+/**
+ * Só a mensagem mais profunda da cadeia — a que o Postgres escreveu.
+ *
+ * ── Por que não usar `mensagemDoBanco` numa tela ───────────────────────────
+ * Ela junta TODOS os níveis, e o primeiro é o embrulho do Drizzle: `"Failed query:
+ * update "clinica" set "razao_social" = $1, …"`, a consulta inteira. Isso é o que se
+ * quer num script de diagnóstico e é o oposto do que se quer num formulário: ilegível,
+ * e despeja estrutura interna e nomes de coluna na tela de quem só digitou um campo
+ * errado.
+ *
+ * Descoberto ao ligar um `catch` na tela de configuração da clínica: a mensagem que
+ * apareceu para o usuário começava com o `UPDATE` completo, e a frase útil ("violates
+ * check constraint clinica_cnes_formato") ficava depois de 400 caracteres de SQL.
+ *
+ * Continua não sendo texto para leigo — nome de constraint não é português. Serve para
+ * o caso em que a borda deixou passar algo que o banco recusou, que é falha nossa: o
+ * usuário vê algo específico em vez de "erro inesperado", e o suporte tem o que ler.
+ */
+export function causaDoBanco(e: unknown): string {
+  let atual: unknown = e
+  let ultima = ''
+  for (let i = 0; i < 5 && atual instanceof Error; i++) {
+    ultima = atual.message
+    atual = (atual as { cause?: unknown }).cause
+  }
+  return ultima || String(e)
+}

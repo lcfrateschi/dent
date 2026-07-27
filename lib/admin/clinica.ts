@@ -1,8 +1,14 @@
 import { registrar } from '@/lib/auditoria/registrar'
 import type { Ator } from '@/lib/authz/sessao'
 import { db } from '@/lib/db'
+import { causaDoBanco } from '@/lib/db/mensagemDoBanco'
 import { agendamento, cadeira, clinica } from '@/lib/db/schema'
 import { podeDesativarCadeira, type EstadoDaCadeira } from '@/lib/domain/administracao'
+import {
+  MSG_CNES_INVALIDO,
+  cnesEhValido,
+  normalizarCnes,
+} from '@/lib/domain/cadastroTiss'
 import { cnpjEhValido, normalizarCnpj } from '@/lib/domain/cnpj'
 import { apenasDigitos } from '@/lib/domain/cpf'
 import { type HorarioFuncionamento, exigirHorarioValido } from '@/lib/domain/horario'
@@ -12,8 +18,12 @@ import { and, eq, gte, notInArray, sql } from 'drizzle-orm'
 /**
  * Configuração da clínica e cadeiras. **Núcleo, sem `'use server'`.**
  *
- * A clínica é uma linha singleton (`id = 1`) — decisão arquitetural 1 do
- * CLAUDE.md. Não existe criar nem apagar: existe editar.
+ * **Esta tela edita a clínica do contexto, e não cria nem apaga.** Criar é onboarding
+ * (`clinica:criar`), operação própria com a credencial do dono; apagar não existe,
+ * porque `clinica_id` é `ON DELETE RESTRICT` e prontuário tem guarda de 20 anos.
+ *
+ * *(O comentário anterior aqui dizia "linha singleton `id = 1`". Era verdade até a
+ * Fase 17, quando `clinica` virou o tenant com PK uuid.)*
  *
  * ── O que esta tela NÃO oferece ─────────────────────────────────────────────
  * **A base da comissão.** `clinica.base_comissao = 'valor_recebido'` é decisão
@@ -37,6 +47,12 @@ export interface DadosDaClinica {
   readonly cnpj?: string
   readonly croResponsavel?: string
   readonly ufCroResponsavel?: string
+  /**
+   * CNES do estabelecimento. Vazio é válido: clínica só particular não tem, e
+   * exigir aqui travaria o cadastro de quem nunca emite guia. Quem cobra é
+   * `conferirAntesDeEnviar`, na emissão.
+   */
+  readonly cnes?: string
   readonly telefone?: string
   readonly email?: string
   readonly cep?: string
@@ -97,33 +113,62 @@ export async function salvarClinicaComAtor(
   if (cep && cep.length !== 8) return { ok: false, mensagem: 'CEP deve ter 8 dígitos.' }
 
   /**
+   * CNES só é conferido quando preenchido. O CHECK `clinica_cnes_formato` já
+   * garante o formato no banco — o que esta validação acrescenta é a **mensagem**:
+   * sem ela o usuário recebe `violates check constraint`, que não diz o que fazer.
+   */
+  const cnes = dados.cnes ? normalizarCnes(dados.cnes) : ''
+  if (cnes && !cnesEhValido(cnes)) return { ok: false, mensagem: MSG_CNES_INVALIDO }
+
+  /**
    * Era um upsert de singleton (`id: 1`). Virou UPDATE da clínica corrente: criar
    * clínica agora é onboarding, operação própria, não efeito colateral de salvar
    * a configuração.
    */
   const id = await clinicaAtual()
-  await db
-    .update(clinica)
-    .set({
-      razaoSocial,
-      nomeFantasia: dados.nomeFantasia?.trim() || null,
-      cnpj: cnpj || null,
-      croResponsavel: dados.croResponsavel?.trim() || null,
-      ufCroResponsavel: dados.ufCroResponsavel?.trim().toUpperCase() || null,
-      telefone: dados.telefone ? apenasDigitos(dados.telefone) : null,
-      email: dados.email?.trim().toLowerCase() || null,
-      cep: cep || null,
-      logradouro: dados.logradouro?.trim() || null,
-      numero: dados.numero?.trim() || null,
-      complemento: dados.complemento?.trim() || null,
-      bairro: dados.bairro?.trim() || null,
-      cidade: dados.cidade?.trim() || null,
-      uf: dados.uf?.trim().toUpperCase() || null,
-      ...(passo !== undefined ? { passoAgendaMinutos: passo } : {}),
-      ...(dados.horarioFuncionamento ? { horarioFuncionamento: dados.horarioFuncionamento } : {}),
-      atualizadoEm: sql`now()`,
-    })
-    .where(eq(clinica.id, id))
+  /**
+   * ── Por que este `try` existe, e o que o revelou ──────────────────────────
+   *
+   * A validação de borda acima é a MENSAGEM; o CHECK do banco é a garantia. Faltava
+   * o que acontece quando a borda deixa passar algo que o CHECK recusa — e a resposta
+   * era: exceção não capturada, ou seja **500 na cara do usuário** em vez de um aviso.
+   *
+   * Descobri sabotando a validação do CNES para conferir que o caso de teste ficava
+   * vermelho: ele ficou, mas o script inteiro morreu com
+   * `violates check constraint "clinica_cnes_formato"`. `criarUsuarioComAtor` já
+   * tratava isso; esta função não.
+   *
+   * `causaDoBanco` e não `mensagemDoBanco`: a segunda junta a cadeia inteira, e o
+   * primeiro elo é o `UPDATE` completo com os parâmetros — ilegível numa tela, e
+   * despeja estrutura interna para quem só digitou um campo errado.
+   */
+  try {
+    await db
+      .update(clinica)
+      .set({
+        razaoSocial,
+        nomeFantasia: dados.nomeFantasia?.trim() || null,
+        cnpj: cnpj || null,
+        croResponsavel: dados.croResponsavel?.trim() || null,
+        ufCroResponsavel: dados.ufCroResponsavel?.trim().toUpperCase() || null,
+        cnes: cnes || null,
+        telefone: dados.telefone ? apenasDigitos(dados.telefone) : null,
+        email: dados.email?.trim().toLowerCase() || null,
+        cep: cep || null,
+        logradouro: dados.logradouro?.trim() || null,
+        numero: dados.numero?.trim() || null,
+        complemento: dados.complemento?.trim() || null,
+        bairro: dados.bairro?.trim() || null,
+        cidade: dados.cidade?.trim() || null,
+        uf: dados.uf?.trim().toUpperCase() || null,
+        ...(passo !== undefined ? { passoAgendaMinutos: passo } : {}),
+        ...(dados.horarioFuncionamento ? { horarioFuncionamento: dados.horarioFuncionamento } : {}),
+        atualizadoEm: sql`now()`,
+      })
+      .where(eq(clinica.id, id))
+  } catch (e) {
+    return { ok: false, mensagem: `Não foi possível salvar: ${causaDoBanco(e)}` }
+  }
 
   await registrar({
     ator,

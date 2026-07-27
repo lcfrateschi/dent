@@ -35,6 +35,15 @@ export type ResultadoCadastro =
 export interface DadosDoConvenio {
   readonly nome: string
   readonly registroAns?: string
+  /**
+   * O código DESTA clínica NESTA operadora, como a operadora o atribuiu.
+   *
+   * Sem validação de formato de propósito, ao contrário do CNES e do registro ANS:
+   * cada operadora usa o seu, com letras, hífen e tamanhos diferentes. Um formato
+   * inventado por nós recusaria dado legítimo do cliente — e o erro apareceria como
+   * "código inválido" para um código que a operadora emitiu.
+   */
+  readonly codigoPrestador?: string
   readonly cnpj?: string
   readonly prazoPagamentoDias?: number
   readonly diaFechamento?: number
@@ -76,6 +85,7 @@ export async function salvarConvenioComAtor(
   const valores = {
     nome,
     registroAns: registro || null,
+    codigoPrestador: dados.codigoPrestador?.trim() || null,
     cnpj: cnpj || null,
     prazoPagamentoDias: prazo,
     diaFechamento: dia ?? null,

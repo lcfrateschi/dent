@@ -143,6 +143,7 @@ export default async function Page() {
                           perfil: u.perfil,
                           ativo: u.ativo,
                           cro: u.cro,
+                          cbos: u.cbos,
                           ufCro: u.ufCro,
                           comissaoPct: u.comissaoPct,
                           especialidade: u.especialidade,

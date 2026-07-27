@@ -80,6 +80,33 @@ describe('não se pode ficar sem administrador', () => {
 })
 
 describe('perfil dentista exige cadastro de profissional', () => {
+  it('CBO-S vazio é válido — dentista de clínica particular nunca emite guia', () => {
+    // Exigir aqui travaria a contratação por causa de um campo de faturamento.
+    expect(validarProfissional({ cro: '12345', ufCro: 'SP', comissaoPct: '40' }).ok).toBe(true)
+    expect(
+      validarProfissional({ cro: '12345', ufCro: 'SP', comissaoPct: '40', cbos: '' }).ok,
+    ).toBe(true)
+  })
+
+  it('CBO-S preenchido de outra família é recusado, com o motivo na mensagem', () => {
+    // 322405 é auxiliar em saúde bucal: CBO real, e errado para quem tem CRO.
+    const r = validarProfissional({
+      cro: '12345',
+      ufCro: 'SP',
+      comissaoPct: '40',
+      cbos: '322405',
+    })
+    expect(r.ok).toBe(false)
+    // A mensagem tem de dizer POR QUE, senão a recusa parece capricho do sistema.
+    if (!r.ok) expect(r.motivo).toContain('cirurgião-dentista')
+  })
+
+  it('CBO-S da família de cirurgião-dentista passa', () => {
+    expect(
+      validarProfissional({ cro: '12345', ufCro: 'SP', comissaoPct: '40', cbos: '223208' }).ok,
+    ).toBe(true)
+  })
+
   it('só dentista exige', () => {
     expect(exigeProfissional('dentista')).toBe(true)
     for (const p of ['recepcao', 'financeiro', 'admin'] as const) {

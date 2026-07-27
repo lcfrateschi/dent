@@ -32,6 +32,17 @@ export const convenio = pgTable(
   // com a sua tabela negociada — a unicidade virou por clínica, no índice abaixo.
   nome: text('nome').notNull(),
   registroAns: varchar('registro_ans', { length: 20 }),
+  /**
+   * O código DESTA clínica NESTA operadora, como ela o atribuiu. Obrigatório no XML TISS.
+   *
+   * Fica aqui e não em `clinica` porque é um código **por operadora**: a mesma clínica é
+   * o prestador 4711 numa e 90233-2 na outra. Como `convenio` já é por clínica (Fase 17),
+   * a coluna aqui já significa o par certo, sem tabela de ligação.
+   *
+   * Sem CHECK de formato, ao contrário do CNES: cada operadora usa o seu, com letras e
+   * hífen. Um CHECK aqui seria convenção nossa recusando dado legítimo do cliente.
+   */
+  codigoPrestador: varchar('codigo_prestador', { length: 20 }),
   cnpj: varchar('cnpj', { length: 14 }),
   /** Prazo contratual de pagamento, em dias, contado do envio da guia. */
   prazoPagamentoDias: smallint('prazo_pagamento_dias').notNull().default(30),

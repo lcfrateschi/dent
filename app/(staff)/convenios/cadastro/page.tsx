@@ -135,6 +135,7 @@ export default async function Page() {
                             id: c.id,
                             nome: c.nome,
                             registroAns: c.registroAns,
+                            codigoPrestador: c.codigoPrestador,
                             cnpj: c.cnpj,
                             prazoPagamentoDias: c.prazoPagamentoDias,
                             diaFechamento: c.diaFechamento,

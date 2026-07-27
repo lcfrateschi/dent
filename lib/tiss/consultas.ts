@@ -2,6 +2,7 @@ import { registrar } from '@/lib/auditoria/registrar'
 import type { Ator } from '@/lib/authz/sessao'
 import { db } from '@/lib/db'
 import {
+  clinica,
   convenio,
   execucao,
   glosa,
@@ -190,6 +191,24 @@ export async function acharGuia(ator: Ator, id: string) {
       profissionalNome: usuario.nome,
       cro: profissional.cro,
       ufCro: profissional.ufCro,
+      /**
+       * ── O cadastro que o XML TISS exige, lido do BANCO ─────────────────────
+       *
+       * Estes quatro campos são obrigatórios no XSD da ANS e antes não existiam em
+       * lugar nenhum: `CadastroParaTiss` era montado à mão nos testes, e
+       * `xmlGuiaOdontologica` estourava nomeando o que faltava. A `drizzle/0039` criou
+       * três deles (o `plano` já existia desde a Fase 13, com a carteirinha).
+       *
+       * Vêm todos **anuláveis**, e é assim que tem de ser: clínica que não fatura
+       * convênio não tem código de prestador, e exigir aqui travaria o cadastro de
+       * quem nunca vai emitir guia. Quem cobra é `conferirAntesDeEnviar`, no momento
+       * em que a guia é emitida — e ele lista o que falta, um por um, em vez de gerar
+       * XML incompleto que passa no parser e volta como glosa semanas depois.
+       */
+      cnes: clinica.cnes,
+      codigoPrestadorNaOperadora: convenio.codigoPrestador,
+      cbos: profissional.cbos,
+      planoBeneficiario: pacienteConvenio.plano,
       valorApresentado: guiaTiss.valorApresentado,
       valorPago: guiaTiss.valorPago,
       numeroLote: guiaTiss.numeroLote,
@@ -205,6 +224,25 @@ export async function acharGuia(ator: Ator, id: string) {
     .innerJoin(paciente, eq(paciente.id, guiaTiss.pacienteId))
     .innerJoin(profissional, eq(profissional.id, guiaTiss.profissionalId))
     .innerJoin(usuario, eq(usuario.id, profissional.usuarioId))
+    /**
+     * `clinica` por join e não por consulta separada: é uma linha, e ler à parte
+     * exigiria resolver "qual clínica" — que é justamente o `limit 1` sem critério que
+     * a Fase 17 eliminou de dez lugares. Com o join, a clínica é a do tenant da guia,
+     * por construção.
+     *
+     * `paciente_convenio` é LEFT: a guia pode existir sem carteirinha ativa registrada
+     * (o número está congelado em `guia_tiss.numero_carteirinha`), e um `innerJoin`
+     * faria a guia **desaparecer** da tela por falta de um campo opcional do XML.
+     */
+    .innerJoin(clinica, eq(clinica.id, guiaTiss.clinicaId))
+    .leftJoin(
+      pacienteConvenio,
+      and(
+        eq(pacienteConvenio.pacienteId, guiaTiss.pacienteId),
+        eq(pacienteConvenio.convenioId, guiaTiss.convenioId),
+        eq(pacienteConvenio.ativo, true),
+      ),
+    )
     .where(eq(guiaTiss.id, id))
 
   if (!cabecalho) return null
