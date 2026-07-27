@@ -1,6 +1,7 @@
 import { gerarHashSenha, gerarSenhaTemporaria } from '@/lib/auth/senha'
 import { db } from '@/lib/db'
 import { assinatura, auditLog, cadeira, clinica, planoAssinatura, usuario } from '@/lib/db/schema'
+import { seedCategoriasDespesa } from '@/lib/db/seed/categoriasDespesa'
 import { seedMateriais } from '@/lib/db/seed/materiais'
 import { seedProcedimentos } from '@/lib/db/seed/procedimentos'
 import { cnpjEhValido, normalizarCnpj } from '@/lib/domain/cnpj'
@@ -284,6 +285,17 @@ export async function criarClinica(dados: DadosDoOnboarding): Promise<ResultadoO
 
       await seedProcedimentos(tx)
       await seedMateriais(tx)
+      /**
+       * As 12 categorias de despesa. Sem elas o módulo de caixa **nasce
+       * inutilizável** — não há onde classificar um lançamento.
+       *
+       * A `drizzle/0034` semeia com `FROM clinica CROSS JOIN …`, ou seja: para as
+       * clínicas que existiam **no instante em que a migration rodou**. Clínica criada
+       * depois recebia zero, e o sintoma seria uma tela de despesa que abre e não
+       * aceita nada — sem erro, sem pista. Mesma classe do laço da `0027`, que também
+       * rodou uma vez e cuja frase afirmando o contrário já foi corrigida.
+       */
+      await seedCategoriasDespesa(tx)
 
       /**
        * Uma cadeira, para a agenda funcionar no primeiro dia: sem cadeira não há

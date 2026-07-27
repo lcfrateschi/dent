@@ -25,6 +25,7 @@
     "clinico:telas": "tsx lib/periodontal/verificar-telas.ts",
     "caixa:telas": "tsx lib/caixa/verificar-telas.ts",
     "espera:telas": "tsx lib/autoatendimento/verificar-telas.ts",
+    "demo:verificar": "tsx lib/demo/verificar-povoamento.ts",
     "periograma:demo": "tsx lib/periodontal/demonstrar.ts",
     "caixa:demo": "tsx lib/caixa/demonstrar.ts",
     "autoatendimento:demo": "tsx lib/autoatendimento/demonstrar.ts",

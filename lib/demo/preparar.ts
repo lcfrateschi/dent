@@ -28,7 +28,7 @@ import { addDias } from '@/lib/domain/datas'
 import { instanteDe } from '@/lib/domain/fuso'
 import { hojeDaClinica } from '@/lib/orcamento/consultas'
 import { comContextoDeClinica } from '@/lib/tenant/contexto'
-import { eq, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { Client } from 'pg'
 import { seedMateriais } from '@/lib/db/seed/materiais'
 import { seedProcedimentos } from '@/lib/db/seed/procedimentos'
@@ -37,6 +37,9 @@ import { exigirClinicaDaDemo, idDaClinicaDaDemo } from './clinicaDaDemo'
 import { garantirAssinatura } from '@/lib/onboarding/assinaturaPadrao'
 import { comClinica } from '@/lib/tenant/executar'
 import { desligarTriggersDeAplicacao, religarTriggersDeAplicacao } from './triggers'
+import { mensagemDoBanco } from '@/lib/db/mensagemDoBanco'
+import { povoarFases18a21 } from './povoar'
+import { gerarTodasAsTarefas } from '@/lib/relacionamento/geradores'
 
 /**
  * Prepara um ambiente de TESTE com dados realistas e credenciais conhecidas.
@@ -299,7 +302,7 @@ async function prepararDados(): Promise<void> {
     especialidade: 'Clínica geral e endodontia',
   })
   const recepcao = await criarStaff('recepcao', 'Recepcionista Rita', 'recepcao')
-  await criarStaff('financeiro', 'Financeiro Fábio', 'financeiro')
+  const financeiro = await criarStaff('financeiro', 'Financeiro Fábio', 'financeiro')
 
   // ── 3. Cadeiras ────────────────────────────────────────────────────────────
   /**
@@ -396,13 +399,33 @@ async function prepararDados(): Promise<void> {
     .select({ id: procedimento.id, codigo: procedimento.codigo, nome: procedimento.nome })
     .from(procedimento)
     .where(
-      or(
-        eq(procedimento.codigo, 'CONS-001'),
-        eq(procedimento.codigo, 'DENT-001'),
-        eq(procedimento.codigo, 'DENT-002'),
-        eq(procedimento.codigo, 'PREV-001'),
-        eq(procedimento.codigo, 'ENDO-001'),
-        eq(procedimento.codigo, 'CIR-001'),
+      and(
+        /**
+         * O filtro de clínica é OBRIGATÓRIO aqui, e a ausência dele foi um bug de
+         * verdade — a TERCEIRA ocorrência da mesma armadilha, dentro do script que a
+         * documenta duas seções acima.
+         *
+         * `procedimento.codigo` é único POR CLÍNICA desde a `drizzle/0022`. Num banco
+         * com várias (a do seed, a da demonstração, as sobras de teste), esta consulta
+         * trazia o mesmo código de todas, e o `Map` guardava **o último que aparecesse**
+         * — de uma clínica qualquer. O `preco_convenio` resultante ligava operadora
+         * desta clínica a procedimento de outra, e o FK composto da `drizzle/0023`
+         * recusava:
+         *
+         *   preco_convenio_procedimento_id_procedimento_id_fk
+         *
+         * Funcionava num banco com duas clínicas por sorte da ordenação, e falhava em
+         * um com cinco. Rodar como DONO piora: não há RLS filtrando por você.
+         */
+        sql`${procedimento.clinicaId} = app_clinica_id()`,
+        or(
+          eq(procedimento.codigo, 'CONS-001'),
+          eq(procedimento.codigo, 'DENT-001'),
+          eq(procedimento.codigo, 'DENT-002'),
+          eq(procedimento.codigo, 'PREV-001'),
+          eq(procedimento.codigo, 'ENDO-001'),
+          eq(procedimento.codigo, 'CIR-001'),
+        ),
       ),
     )
   const porCodigo = new Map(procs.map((p) => [p.codigo, p]))
@@ -503,7 +526,11 @@ async function prepararDados(): Promise<void> {
     })
     .returning({ id: itemPlano.id })
 
-  await db.insert(itemPlano).values([
+  // O `returning` aqui não é estilo: a ordem de laboratório da Fase 21 precisa de um
+  // `item_plano` aprovado, e o FK é composto `(item_plano_id, clinica_id)` — ir buscar
+  // depois "um item aprovado qualquer" traria o de outra clínica num banco com várias,
+  // que é o erro que o FK composto passou a recusar.
+  const itensAprovados = await db.insert(itemPlano).values([
     {
       planoId: plano!.id,
       procedimentoId: porCodigo.get('DENT-002')!.id,
@@ -528,7 +555,7 @@ async function prepararDados(): Promise<void> {
       denteFdi: 18,
       status: 'proposto',
     },
-  ])
+  ]).returning({ id: itemPlano.id, status: itemPlano.status })
 
   const [exec] = await db
     .insert(execucao)
@@ -585,21 +612,27 @@ async function prepararDados(): Promise<void> {
   const materiais = await db
     .select({ id: material.id, codigo: material.codigo, nome: material.nome, unidade: material.unidade })
     .from(material)
+    // Filtro de clínica pelo mesmo motivo do catálogo de procedimentos, logo acima:
+    // `material.codigo` é único POR CLÍNICA, e sem isto o `Map` guarda o material de
+    // outra — que o FK composto de `lote_material` recusa. Foi a quarta ocorrência.
     .where(
-      or(
-        eq(material.codigo, 'BIO-001'),
-        eq(material.codigo, 'ANE-001'),
-        eq(material.codigo, 'ANE-004'),
-        eq(material.codigo, 'RES-001'),
-        eq(material.codigo, 'RES-003'),
-        eq(material.codigo, 'RES-004'),
-        eq(material.codigo, 'BIO-002'),
-        eq(material.codigo, 'BIO-003'),
-        eq(material.codigo, 'BIO-004'),
-        eq(material.codigo, 'BIO-005'),
-        eq(material.codigo, 'RES-006'),
-        eq(material.codigo, 'END-001'),
-        eq(material.codigo, 'IMP-001'),
+      and(
+        sql`${material.clinicaId} = app_clinica_id()`,
+        inArray(material.codigo, [
+          'BIO-001',
+          'ANE-001',
+          'ANE-004',
+          'RES-001',
+          'RES-003',
+          'RES-004',
+          'BIO-002',
+          'BIO-003',
+          'BIO-004',
+          'BIO-005',
+          'RES-006',
+          'END-001',
+          'IMP-001',
+        ]),
       ),
     )
   const mat = new Map(materiais.map((m) => [m.codigo, m]))
@@ -686,6 +719,50 @@ async function prepararDados(): Promise<void> {
   })
   console.log(`   ana${DOMINIO} — entra direto, sem convite`)
 
+  // ── 10. Fases 18 a 21 ──────────────────────────────────────────────────────
+  /**
+   * As nove seções acima foram escritas antes das Fases 18 a 21, e por isso as telas
+   * novas abriam VAZIAS — periograma, laboratório, esterilização, despesas, fluxo de
+   * caixa, lista de espera, propostas alternativas e as filas de relacionamento.
+   *
+   * Estado vazio bem feito é uma coisa boa, e várias dessas telas têm um. Mas ele não
+   * deixa ninguém **avaliar** a tela, e é exatamente onde o projeto está: nenhuma das 20
+   * telas foi vista por uma pessoa.
+   */
+  titulo('10. Fases 18 a 21 (periograma, laboratório, esterilização, caixa, filas)')
+  const itemAprovado = itensAprovados.find((i) => i.status === 'aprovado')
+  if (!itemAprovado) throw new Error('nenhum item de plano aprovado: a ordem de laboratório precisa de um')
+
+  const povoado = await povoarFases18a21({
+    hoje,
+    pacienteAnaId: pacAna!.id,
+    pacienteBrunoId: pacBruno!.id,
+    pacientePedroId: pacPedro!.id,
+    profissionalId: dentista.profissionalId!,
+    usuarioDentistaId: dentista.usuarioId,
+    usuarioFinanceiroId: financeiro.usuarioId,
+    planoDaAnaId: plano!.id,
+    itemAprovadoId: itemAprovado.id,
+    cadeiraId: cadeiraA,
+  })
+  for (const [tabela, n] of Object.entries(povoado.linhas)) {
+    console.log(`   ${tabela.padEnd(26)} ${n}`)
+  }
+
+  /**
+   * As cinco filas de relacionamento nascem de GERADORES, não de INSERT à mão — e isso
+   * é deliberado: inserir a tarefa direto criaria linha que nenhum gerador reconhece
+   * como sua, e o próximo `whatsapp:despachar` a duplicaria. A chave de idempotência é
+   * por FATO, então rodar os geradores sobre o dado que acabou de nascer produz
+   * exatamente o que a produção produziria.
+   */
+  const filas = await gerarTodasAsTarefas()
+  const totalFilas = filas.reduce((soma, f) => soma + f.criadas, 0)
+  console.log(`   ${'tarefa_relacionamento'.padEnd(26)} ${totalFilas} (${filas.map((f) => `${f.tipo}:${f.criadas}`).join(' ')})`)
+
+  console.log('\n   \x1b[33m⚠ Os valores são DE PARTIDA e vários são arbitrários:\x1b[0m')
+  for (const a of povoado.arbitrarios) console.log(`     • ${a}`)
+
   // ── Credenciais ────────────────────────────────────────────────────────────
   console.log(`\n${'═'.repeat(74)}`)
   console.log('  CREDENCIAIS DO AMBIENTE DE TESTE')
@@ -739,6 +816,74 @@ async function limparDados(): Promise<void> {
     // 5 linhas órfãs em movimento_estoque, o que derrubou a 0023. Ver
     // lib/demo/triggers.ts.
     const tabelasDesligadas = await desligarTriggersDeAplicacao(c)
+
+    /**
+     * ── Fases 18 a 21, do mais dependente para o menos ─────────────────────────
+     *
+     * Isto vem ANTES dos pacientes, porque quase tudo aqui aponta para eles. E vem
+     * junto num bloco identificado, porque a regra do script é que `demo:limpar`
+     * remova **tudo** o que o `demo:preparar` cria: dado de demonstração que a limpeza
+     * não alcança transforma o banco de desenvolvimento em lixo acumulado, e isso já
+     * aconteceu aqui com clínicas de teste que não se apagam (`ON DELETE RESTRICT`).
+     *
+     * O filtro é o mesmo dos outros: `[DEMO]%` no nome e `@demo.local` no e-mail,
+     * dentro do contexto da clínica da demonstração.
+     */
+    const pacientesDemo = `select id from paciente where nome like '[DEMO]%'`
+
+    // Relacionamento: contato aponta para tarefa.
+    await c.query(`delete from contato_relacionamento where tarefa_id in (
+      select id from tarefa_relacionamento where paciente_id in (${pacientesDemo}))`)
+    await c.query(`delete from tarefa_relacionamento where paciente_id in (${pacientesDemo})`)
+
+    // Autoatendimento.
+    await c.query(`delete from lista_espera where paciente_id in (${pacientesDemo})`)
+
+    // Periograma: sítio e dente apontam para o exame.
+    const periogramasDemo = `select id from periograma where paciente_id in (${pacientesDemo})`
+    await c.query(`delete from periograma_sitio where periograma_id in (${periogramasDemo})`)
+    await c.query(`delete from periograma_dente where periograma_id in (${periogramasDemo})`)
+    await c.query(`delete from periograma where paciente_id in (${pacientesDemo})`)
+
+    // Laboratório: a refação aponta para a ordem anterior, então as filhas primeiro.
+    const labsDemo = `select id from laboratorio where nome like '[DEMO]%'`
+    await c.query(`delete from ordem_laboratorio where refaz_id in (
+      select id from ordem_laboratorio where laboratorio_id in (${labsDemo}))`)
+    await c.query(`delete from ordem_laboratorio where laboratorio_id in (${labsDemo})`)
+    await c.query(`delete from laboratorio where nome like '[DEMO]%'`)
+
+    // Esterilização.
+    await c.query(`delete from ciclo_esterilizacao where autoclave_id in (
+      select id from autoclave where nome like '[DEMO]%')`)
+    await c.query(`delete from autoclave where nome like '[DEMO]%'`)
+
+    // Pix: o evento e a intenção apontam para pagamento/parcela, que são apagados
+    // adiante junto com a cobrança do paciente — então estes vêm primeiro.
+    await c.query(`delete from evento_pix where payload->>'demo' = 'true'`)
+    await c.query(`delete from intencao_pix where txid like 'DEMOPIX%'`)
+
+    // Caixa: pagamento aponta para despesa, despesa para categoria e para a regra.
+    const despesasDemo = `select id from despesa where descricao like '[DEMO]%'`
+    await c.query(`delete from pagamento_despesa where despesa_id in (${despesasDemo})`)
+    await c.query(`delete from despesa where descricao like '[DEMO]%'`)
+    await c.query(`delete from regra_despesa_recorrente where descricao like '[DEMO]%'`)
+    await c.query(`delete from taxa_meio_pagamento where observacao like '[DEMO]%'`)
+
+    /**
+     * `regra_autoatendimento` e `permite_autoagendamento` são CONFIGURAÇÃO da clínica,
+     * não dado de demonstração — mas o `demo:preparar` os LIGOU, e deixá-los ligados
+     * seria a demonstração alterando o comportamento do sistema de forma permanente.
+     * Uma clínica com a agenda aberta para a internet porque alguém rodou um script de
+     * demonstração meses atrás é o oposto do default `false` que a Fase 19 escolheu.
+     */
+    await c.query(`update procedimento set permite_autoagendamento = false
+                    where clinica_id = app_clinica_id() and permite_autoagendamento`)
+    await c.query(`delete from regra_autoatendimento where clinica_id = app_clinica_id()`)
+
+    // Propostas alternativas: itens antes do plano.
+    const propostasDemo = `select id from plano_tratamento where titulo like '[DEMO]%' and grupo_proposta is not null`
+    await c.query(`delete from item_plano where plano_id in (${propostasDemo})`)
+    await c.query(`delete from plano_tratamento where titulo like '[DEMO]%' and grupo_proposta is not null`)
 
     // Ordem: do mais dependente para o menos.
     await c.query(`delete from movimento_estoque where lote_id in (
@@ -806,7 +951,14 @@ acao()
     await pool.end()
   })
   .catch(async (e) => {
-    console.error('\n✗', e instanceof Error ? e.message : e)
+    /**
+     * `mensagemDoBanco` e não `e.message`: o Drizzle embrulha o erro do Postgres e o
+     * `message` fica só "Failed query: insert into …" com os parâmetros. A causa — o
+     * nome da constraint, o DETAIL, a mensagem da trigger — está em `e.cause`, e sem
+     * isso o diagnóstico exige reproduzir a consulta à mão no psql. Custou três
+     * tentativas aqui.
+     */
+    console.error('\n✗', mensagemDoBanco(e))
     await pool.end()
     process.exit(1)
   })

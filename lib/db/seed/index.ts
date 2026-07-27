@@ -6,6 +6,7 @@ import { asc, sql } from 'drizzle-orm'
 import { seedDentes } from './dentes'
 import { seedMateriais } from './materiais'
 import { seedProcedimentos } from './procedimentos'
+import { seedCategoriasDespesa } from './categoriasDespesa'
 import { seedRegrasRetorno } from './regrasRetorno'
 import { seedUsuarioInicial } from './usuarioInicial'
 
@@ -95,6 +96,10 @@ async function main(): Promise<void> {
   }
 
   const regras = await seedRegrasRetorno(tx)
+  // Categorias de despesa: a `drizzle/0034` só semeou para as clínicas que existiam
+  // quando ela rodou, e num banco novo isso é zero. Ver o comentário do módulo.
+  const cats = await seedCategoriasDespesa(tx)
+  console.log(`  categorias    → ${cats} categorias de despesa (de partida)`)
   console.log(
     `  regra_retorno → ${regras.criadas} regra(s) de retorno programado (valores de partida — o intervalo é decisão clínica)`,
   )

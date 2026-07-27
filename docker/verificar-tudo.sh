@@ -186,6 +186,10 @@ etapa 'filas de relacionamento'   banco comoDono relacionamento:demo
 etapa 'periograma e prótese'      banco comoDono periograma:demo
 etapa 'fechamento financeiro'     banco comoDono caixa:demo
 etapa 'impressos (PDF no disco)'  banco comoDono impressos:demo
+# Última de propósito: ela afirma que TODA tela tem dado, e só faz sentido depois de
+# tudo o que popula ter rodado. A contraprova dela (`--contraprova`, contra um banco só
+# com `db:seed`) pegou 12 de 18 asserções vazias na primeira rodada.
+etapa 'toda tela tem dado'        http comoDono demo:verificar
 etapa 'autoatendimento'           banco comoDono autoatendimento:demo
 
 if [ "$LISTAR" -eq 1 ]; then

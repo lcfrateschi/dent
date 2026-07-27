@@ -603,9 +603,26 @@ DECLARE
   v_esperados smallint[] := ARRAY[16,17,18,26,27,28,36,37,38,46,47,48]::smallint[];
   v_obtidos   smallint[];
 BEGIN
+  /*
+   * ── CORREÇÃO, escrita depois: a lista NÃO vem da tabela `dente` ────────────
+   *
+   * Aqui estava `FROM dente WHERE denticao = 'permanente'`, e isso tornava esta
+   * migration **inaplicável em banco novo**: o `dente` é populado pelo `db:seed`, que
+   * roda DEPOIS das migrations. Num volume novo, `docker compose up` falhava com
+   * "obtidos {}" — a asserção reprovando por tabela vazia, não por aritmética errada —
+   * e o app nunca subia, porque depende do `migrate`.
+   *
+   * A troca também conserta o que a asserção mede. Lendo `dente`, ela dependia de duas
+   * coisas ao mesmo tempo (a função E o seed) e não distinguia qual falhou. Gerando os
+   * 32 dentes permanentes por aritmética (quadrantes 1–4 × posições 1–8), ela testa
+   * **só a função**, contra a lista escrita à mão — que é o que ela existe para fazer.
+   */
   SELECT coalesce(array_agg(fdi ORDER BY fdi), ARRAY[]::smallint[]) INTO v_obtidos
-    FROM dente
-   WHERE denticao = 'permanente' AND dente_multirradicular(fdi);
+    FROM (
+      SELECT (q * 10 + d)::smallint AS fdi
+        FROM generate_series(1, 4) AS q, generate_series(1, 8) AS d
+    ) AS permanentes
+   WHERE dente_multirradicular(fdi);
 
   IF v_obtidos <> v_esperados THEN
     RAISE EXCEPTION
