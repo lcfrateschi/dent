@@ -93,7 +93,9 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
       S3_REGION: ${S3_REGION:-auto}
     ports:
-      - '${APP_PORT:-3000}:3000'
+      # Exposto só no loopback, mesmo padrão do serviço `db` acima — sem isso o
+      # app fica acessível em qualquer interface (0.0.0.0), não só localhost.
+      - '127.0.0.1:${APP_PORT:-3000}:3000'
     depends_on:
       migrate:
         # App só sobe depois do banco migrado e semeado.
@@ -151,7 +153,8 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
       S3_REGION: ${S3_REGION:-auto}
     ports:
-      - '${APP_PORT:-3000}:3000'
+      # Mesmo motivo do serviço `app` acima: loopback apenas.
+      - '127.0.0.1:${APP_PORT:-3000}:3000'
     volumes:
       - anexos:/anexos
     depends_on:
